@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
 const (
 	envTodoHome    = "TODO_HOME"
+	envXDGConfig   = "XDG_CONFIG_HOME"
+	envAppData     = "APPDATA"
 	defaultDirName = "todo"
 	defaultDBName  = "todo.db"
 	defaultDirPerm = 0o755
@@ -20,6 +23,24 @@ func DataDir() (string, error) {
 		trimmed := strings.TrimSpace(home)
 		if trimmed != "" {
 			return normalizePath(trimmed)
+		}
+	}
+
+	if xdg := strings.TrimSpace(os.Getenv(envXDGConfig)); xdg != "" {
+		dir, err := normalizePath(xdg)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(dir, defaultDirName), nil
+	}
+
+	if runtime.GOOS == "windows" {
+		if appData := strings.TrimSpace(os.Getenv(envAppData)); appData != "" {
+			dir, err := normalizePath(appData)
+			if err != nil {
+				return "", err
+			}
+			return filepath.Join(dir, defaultDirName), nil
 		}
 	}
 
