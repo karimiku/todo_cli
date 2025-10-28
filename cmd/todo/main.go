@@ -50,6 +50,10 @@ func registerCommands(app *cli.App) error {
 		commands.NewAddCommand(),
 		commands.NewListCommand(),
 		commands.NewNextCommand(),
+		commands.NewFocusCommand(),
+		commands.NewMoveCommand(),
+		commands.NewEditCommand(),
+		commands.NewDeleteCommand(),
 	}
 
 	for _, command := range commandsToRegister {

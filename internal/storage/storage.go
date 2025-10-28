@@ -34,6 +34,9 @@ var ErrEmptyText = errors.New("空のテキストは不可")
 // ErrNoPendingTasks is returned when an operation requires pending tasks but none exist.
 var ErrNoPendingTasks = errors.New("未完了はありません 🎉")
 
+// ErrInvalidPosition is returned when a move position is less than 1.
+var ErrInvalidPosition = errors.New("順位は 1 以上を指定してください")
+
 // Open initialises a new Store backed by SQLite located at the provided path.
 func Open(path string) (*Store, error) {
 	gormDB, err := gorm.Open(sqlite.Open(path), &gorm.Config{
@@ -168,6 +171,337 @@ func (s *Store) CompleteNext(ctx context.Context) (*Task, error) {
 	}
 
 	return &updated, nil
+}
+
+// FocusTask moves the task at displayID to the top position (displayID=1).
+func (s *Store) FocusTask(ctx context.Context, displayID int) (*Task, error) {
+	if displayID < 1 {
+		return nil, fmt.Errorf("表示IDは1以上である必要があります")
+	}
+
+	db := s.db.WithContext(ctx)
+	var focused Task
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var pending []Task
+		if err := tx.Where("is_done = ?", false).
+			Order("order_key asc, id asc").
+			Find(&pending).Error; err != nil {
+			return fmt.Errorf("select pending tasks: %w", err)
+		}
+
+		if len(pending) == 0 {
+			return ErrNoPendingTasks
+		}
+
+		if displayID > len(pending) {
+			return fmt.Errorf("未完了の件数は %d 件です", len(pending))
+		}
+
+		idx := displayID - 1
+		target := pending[idx]
+
+		// If already at position 1, just update timestamp
+		if idx == 0 {
+			now := time.Now().UTC()
+			if err := tx.Model(&Task{}).
+				Where("id = ?", target.ID).
+				Update("updated_at", now).Error; err != nil {
+				return fmt.Errorf("update timestamp: %w", err)
+			}
+			target.UpdatedAt = now
+			focused = target
+			return nil
+		}
+
+		// Move to top: set order_key to minOrder - 1.0
+		minOrder := pending[0].OrderKey
+		newOrder := minOrder - 1.0
+
+		now := time.Now().UTC()
+		if err := tx.Model(&Task{}).
+			Where("id = ?", target.ID).
+			Updates(map[string]any{
+				"order_key":  newOrder,
+				"updated_at": now,
+			}).Error; err != nil {
+			return fmt.Errorf("update order_key: %w", err)
+		}
+
+		target.OrderKey = newOrder
+		target.UpdatedAt = now
+		focused = target
+
+		// Normalize if needed
+		if newOrder < -1e9 || minOrder-newOrder < 1e-6 {
+			if err := normalize(tx); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &focused, nil
+}
+
+// MoveTask moves the task at fromDisplayID to toPosition.
+func (s *Store) MoveTask(ctx context.Context, fromDisplayID, toPosition int) (*Task, error) {
+	if fromDisplayID < 1 {
+		return nil, fmt.Errorf("表示IDは1以上である必要があります")
+	}
+	if toPosition < 1 {
+		return nil, ErrInvalidPosition
+	}
+
+	db := s.db.WithContext(ctx)
+	var moved Task
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var pending []Task
+		if err := tx.Where("is_done = ?", false).
+			Order("order_key asc, id asc").
+			Find(&pending).Error; err != nil {
+			return fmt.Errorf("select pending tasks: %w", err)
+		}
+
+		if len(pending) == 0 {
+			return ErrNoPendingTasks
+		}
+
+		if fromDisplayID > len(pending) {
+			return fmt.Errorf("未完了の件数は %d 件です", len(pending))
+		}
+
+		// Clamp toPosition to valid range
+		if toPosition > len(pending) {
+			toPosition = len(pending)
+		}
+
+		fromIdx := fromDisplayID - 1
+		toIdx := toPosition - 1
+		target := pending[fromIdx]
+
+		// No movement needed
+		if fromIdx == toIdx {
+			now := time.Now().UTC()
+			if err := tx.Model(&Task{}).
+				Where("id = ?", target.ID).
+				Update("updated_at", now).Error; err != nil {
+				return fmt.Errorf("update timestamp: %w", err)
+			}
+			target.UpdatedAt = now
+			moved = target
+			return nil
+		}
+
+		var newOrder float64
+		if toIdx == 0 {
+			// Move to top
+			newOrder = pending[0].OrderKey - 1.0
+		} else if toIdx == len(pending)-1 {
+			// Move to bottom
+			newOrder = pending[len(pending)-1].OrderKey + 1.0
+		} else {
+			// Move to middle
+			var prev, next float64
+			if fromIdx < toIdx {
+				// Moving down: insert after toIdx
+				prev = pending[toIdx].OrderKey
+				if toIdx+1 < len(pending) {
+					next = pending[toIdx+1].OrderKey
+				} else {
+					next = prev + 2.0
+				}
+			} else {
+				// Moving up: insert before toIdx
+				next = pending[toIdx].OrderKey
+				if toIdx > 0 {
+					prev = pending[toIdx-1].OrderKey
+				} else {
+					prev = next - 2.0
+				}
+			}
+			newOrder = (prev + next) / 2.0
+		}
+
+		now := time.Now().UTC()
+		if err := tx.Model(&Task{}).
+			Where("id = ?", target.ID).
+			Updates(map[string]any{
+				"order_key":  newOrder,
+				"updated_at": now,
+			}).Error; err != nil {
+			return fmt.Errorf("update order_key: %w", err)
+		}
+
+		target.OrderKey = newOrder
+		target.UpdatedAt = now
+		moved = target
+
+		// Check if normalization is needed
+		needsNormalize := false
+		if toIdx > 0 && toIdx < len(pending)-1 {
+			var prev, next float64
+			if fromIdx < toIdx {
+				prev = pending[toIdx].OrderKey
+				if toIdx+1 < len(pending) {
+					next = pending[toIdx+1].OrderKey
+				}
+			} else {
+				next = pending[toIdx].OrderKey
+				if toIdx > 0 {
+					prev = pending[toIdx-1].OrderKey
+				}
+			}
+			if prev != 0 && next != 0 {
+				gap := next - prev
+				if gap < 1e-3 && gap > 0 {
+					needsNormalize = true
+				}
+			}
+		}
+
+		if needsNormalize {
+			if err := normalize(tx); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &moved, nil
+}
+
+// EditTask updates the text of the task at displayID.
+func (s *Store) EditTask(ctx context.Context, displayID int, newText string) (*Task, error) {
+	if displayID < 1 {
+		return nil, fmt.Errorf("表示IDは1以上である必要があります")
+	}
+
+	trimmed := strings.TrimSpace(newText)
+	if trimmed == "" {
+		return nil, ErrEmptyText
+	}
+
+	db := s.db.WithContext(ctx)
+	var edited Task
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var pending []Task
+		if err := tx.Where("is_done = ?", false).
+			Order("order_key asc, id asc").
+			Find(&pending).Error; err != nil {
+			return fmt.Errorf("select pending tasks: %w", err)
+		}
+
+		if len(pending) == 0 {
+			return ErrNoPendingTasks
+		}
+
+		if displayID > len(pending) {
+			return fmt.Errorf("未完了の件数は %d 件です", len(pending))
+		}
+
+		idx := displayID - 1
+		target := pending[idx]
+
+		now := time.Now().UTC()
+		if err := tx.Model(&Task{}).
+			Where("id = ?", target.ID).
+			Updates(map[string]any{
+				"text":       trimmed,
+				"updated_at": now,
+			}).Error; err != nil {
+			return fmt.Errorf("update task text: %w", err)
+		}
+
+		target.Text = trimmed
+		target.UpdatedAt = now
+		edited = target
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &edited, nil
+}
+
+// DeleteTask physically deletes the task at displayID.
+func (s *Store) DeleteTask(ctx context.Context, displayID int) (*Task, error) {
+	if displayID < 1 {
+		return nil, fmt.Errorf("表示IDは1以上である必要があります")
+	}
+
+	db := s.db.WithContext(ctx)
+	var deleted Task
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var pending []Task
+		if err := tx.Where("is_done = ?", false).
+			Order("order_key asc, id asc").
+			Find(&pending).Error; err != nil {
+			return fmt.Errorf("select pending tasks: %w", err)
+		}
+
+		if len(pending) == 0 {
+			return ErrNoPendingTasks
+		}
+
+		if displayID > len(pending) {
+			return fmt.Errorf("未完了の件数は %d 件です", len(pending))
+		}
+
+		idx := displayID - 1
+		target := pending[idx]
+		deleted = target
+
+		result := tx.Where("id = ? AND is_done = ?", target.ID, false).
+			Delete(&Task{})
+		if result.Error != nil {
+			return fmt.Errorf("delete task: %w", result.Error)
+		}
+
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("タスクの削除に失敗しました")
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &deleted, nil
+}
+
+// normalize re-assigns order_key values to 1.0, 2.0, ... for all pending tasks.
+func normalize(tx *gorm.DB) error {
+	var pending []Task
+	if err := tx.Where("is_done = ?", false).
+		Order("order_key asc, id asc").
+		Find(&pending).Error; err != nil {
+		return fmt.Errorf("normalize: select pending tasks: %w", err)
+	}
+
+	for i := range pending {
+		newOrder := float64(i + 1)
+		if err := tx.Model(&Task{}).
+			Where("id = ?", pending[i].ID).
+			Update("order_key", newOrder).Error; err != nil {
+			return fmt.Errorf("normalize: update order_key: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func applyPragmas(db *gorm.DB) error {

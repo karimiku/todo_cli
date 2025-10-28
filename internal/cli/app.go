@@ -97,7 +97,7 @@ func (a *App) Run(ctx context.Context, args []string) int {
 }
 
 func (a *App) printUsage() {
-	fmt.Fprintln(a.stdout, "usage: todo <command> [arguments]")
+	fmt.Fprintln(a.stdout, "usage: todo (tb/td) <command> [arguments]")
 
 	if len(a.byName) == 0 {
 		fmt.Fprintln(a.stdout, "利用可能なコマンドはまだ登録されていません。")
