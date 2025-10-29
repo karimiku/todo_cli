@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kamiriku/todo_cli/internal/storage"
 )
@@ -125,5 +126,245 @@ func TestCompleteNextNoTasks(t *testing.T) {
 
 	if _, err := st.CompleteNext(t.Context()); err != storage.ErrNoPendingTasks {
 		t.Fatalf("expected ErrNoPendingTasks, got %v", err)
+	}
+}
+
+func TestFocusTaskMovesToTop(t *testing.T) {
+	st := newStore(t)
+
+	first, err := st.AddTask(t.Context(), "朝会の準備")
+	if err != nil {
+		t.Fatalf("AddTask #1: %v", err)
+	}
+	if _, err := st.AddTask(t.Context(), "メール返信"); err != nil {
+		t.Fatalf("AddTask #2: %v", err)
+	}
+	third, err := st.AddTask(t.Context(), "資料確認")
+	if err != nil {
+		t.Fatalf("AddTask #3: %v", err)
+	}
+
+	focused, err := st.FocusTask(t.Context(), 3)
+	if err != nil {
+		t.Fatalf("FocusTask: %v", err)
+	}
+	if focused.ID != third.ID {
+		t.Fatalf("focused task mismatch: got %d want %d", focused.ID, third.ID)
+	}
+
+	pending, _, err := st.ListTasks(t.Context())
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+
+	if pending[0].ID != third.ID {
+		t.Fatalf("expected task %d to be first, got %d", third.ID, pending[0].ID)
+	}
+	if pending[1].ID != first.ID {
+		t.Fatalf("expected original first task to shift, got %d", pending[1].ID)
+	}
+	if pending[0].OrderKey >= pending[1].OrderKey {
+		t.Fatalf("expected focused order_key < next, got %f vs %f", pending[0].OrderKey, pending[1].OrderKey)
+	}
+}
+
+func TestFocusTaskInvalidID(t *testing.T) {
+	st := newStore(t)
+	if _, err := st.FocusTask(t.Context(), 1); err != storage.ErrNoPendingTasks {
+		t.Fatalf("expected ErrNoPendingTasks, got %v", err)
+	}
+
+	if _, err := st.AddTask(t.Context(), "朝会の準備"); err != nil {
+		t.Fatalf("AddTask: %v", err)
+	}
+	if _, err := st.FocusTask(t.Context(), 2); err != storage.ErrInvalidDisplayID {
+		t.Fatalf("expected ErrInvalidDisplayID, got %v", err)
+	}
+}
+
+func TestFocusTaskKeepsOrderWhenAlreadyTop(t *testing.T) {
+	st := newStore(t)
+	task, err := st.AddTask(t.Context(), "朝会")
+	if err != nil {
+		t.Fatalf("AddTask: %v", err)
+	}
+	origOrder := task.OrderKey
+
+	focused, err := st.FocusTask(t.Context(), 1)
+	if err != nil {
+		t.Fatalf("FocusTask: %v", err)
+	}
+	if focused.OrderKey != origOrder {
+		t.Fatalf("expected order_key to stay %f, got %f", origOrder, focused.OrderKey)
+	}
+}
+
+func TestMoveTaskReorders(t *testing.T) {
+	st := newStore(t)
+	first, err := st.AddTask(t.Context(), "朝会準備")
+	if err != nil {
+		t.Fatalf("AddTask #1: %v", err)
+	}
+	second, err := st.AddTask(t.Context(), "メール")
+	if err != nil {
+		t.Fatalf("AddTask #2: %v", err)
+	}
+	third, err := st.AddTask(t.Context(), "資料確認")
+	if err != nil {
+		t.Fatalf("AddTask #3: %v", err)
+	}
+
+	moved, err := st.MoveTask(t.Context(), 3, 1)
+	if err != nil {
+		t.Fatalf("MoveTask: %v", err)
+	}
+	if moved.ID != third.ID {
+		t.Fatalf("moved unexpected task: got %d want %d", moved.ID, third.ID)
+	}
+
+	pending, _, err := st.ListTasks(t.Context())
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+
+	expected := []uint{third.ID, first.ID, second.ID}
+	for i, task := range pending {
+		if task.ID != expected[i] {
+			t.Fatalf("unexpected order at %d: got %d want %d", i, task.ID, expected[i])
+		}
+	}
+
+	if _, err := st.MoveTask(t.Context(), 1, 3); err != nil {
+		t.Fatalf("MoveTask to tail: %v", err)
+	}
+	pending, _, err = st.ListTasks(t.Context())
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+
+	expected = []uint{first.ID, second.ID, third.ID}
+	for i, task := range pending {
+		if task.ID != expected[i] {
+			t.Fatalf("unexpected order after tail move at %d: got %d want %d", i, task.ID, expected[i])
+		}
+	}
+}
+
+func TestMoveTaskValidation(t *testing.T) {
+	st := newStore(t)
+	if _, err := st.MoveTask(t.Context(), 1, 1); err != storage.ErrNoPendingTasks {
+		t.Fatalf("expected ErrNoPendingTasks, got %v", err)
+	}
+
+	if _, err := st.AddTask(t.Context(), "朝会"); err != nil {
+		t.Fatalf("AddTask: %v", err)
+	}
+
+	if _, err := st.MoveTask(t.Context(), 0, 1); err != storage.ErrInvalidDisplayID {
+		t.Fatalf("expected ErrInvalidDisplayID for id=0, got %v", err)
+	}
+
+	if _, err := st.MoveTask(t.Context(), 1, 0); err != storage.ErrInvalidPosition {
+		t.Fatalf("expected ErrInvalidPosition for pos=0, got %v", err)
+	}
+
+	if _, err := st.MoveTask(t.Context(), 2, 1); err != storage.ErrInvalidDisplayID {
+		t.Fatalf("expected ErrInvalidDisplayID for id out of range, got %v", err)
+	}
+}
+
+func TestEditTaskUpdatesText(t *testing.T) {
+	st := newStore(t)
+	if _, err := st.AddTask(t.Context(), "旧テキスト"); err != nil {
+		t.Fatalf("AddTask: %v", err)
+	}
+
+	before := time.Now()
+	edited, err := st.EditTask(t.Context(), 1, "新しいテキスト")
+	if err != nil {
+		t.Fatalf("EditTask: %v", err)
+	}
+	if edited.Text != "新しいテキスト" {
+		t.Fatalf("text not updated: %q", edited.Text)
+	}
+	if !edited.UpdatedAt.After(before) {
+		t.Fatalf("expected updated_at to be refreshed")
+	}
+
+	pending, _, err := st.ListTasks(t.Context())
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+	if pending[0].Text != "新しいテキスト" {
+		t.Fatalf("list should reflect new text, got %q", pending[0].Text)
+	}
+}
+
+func TestEditTaskValidation(t *testing.T) {
+	st := newStore(t)
+	if _, err := st.EditTask(t.Context(), 1, "更新"); err != storage.ErrNoPendingTasks {
+		t.Fatalf("expected ErrNoPendingTasks, got %v", err)
+	}
+
+	if _, err := st.AddTask(t.Context(), "テスト"); err != nil {
+		t.Fatalf("AddTask: %v", err)
+	}
+
+	if _, err := st.EditTask(t.Context(), 2, "更新"); err != storage.ErrInvalidDisplayID {
+		t.Fatalf("expected ErrInvalidDisplayID, got %v", err)
+	}
+
+	if _, err := st.EditTask(t.Context(), 1, " "); err != storage.ErrEmptyText {
+		t.Fatalf("expected ErrEmptyText, got %v", err)
+	}
+}
+
+func TestDeleteTaskRemovesPending(t *testing.T) {
+	st := newStore(t)
+	if _, err := st.AddTask(t.Context(), "A"); err != nil {
+		t.Fatalf("AddTask: %v", err)
+	}
+	if _, err := st.AddTask(t.Context(), "B"); err != nil {
+		t.Fatalf("AddTask: %v", err)
+	}
+	if _, err := st.AddTask(t.Context(), "C"); err != nil {
+		t.Fatalf("AddTask: %v", err)
+	}
+
+	deleted, err := st.DeleteTask(t.Context(), 2)
+	if err != nil {
+		t.Fatalf("DeleteTask: %v", err)
+	}
+	if deleted.Text != "B" {
+		t.Fatalf("expected to delete second task, got %s", deleted.Text)
+	}
+
+	pending, _, err := st.ListTasks(t.Context())
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+	if len(pending) != 2 {
+		t.Fatalf("expected 2 pending tasks, got %d", len(pending))
+	}
+	if pending[0].Text != "A" || pending[1].Text != "C" {
+		t.Fatalf("unexpected tasks remaining: %+v", pending)
+	}
+}
+
+func TestDeleteTaskValidation(t *testing.T) {
+	st := newStore(t)
+	if _, err := st.DeleteTask(t.Context(), 1); err != storage.ErrNoPendingTasks {
+		t.Fatalf("expected ErrNoPendingTasks, got %v", err)
+	}
+
+	if _, err := st.AddTask(t.Context(), "タスク"); err != nil {
+		t.Fatalf("AddTask: %v", err)
+	}
+
+	if _, err := st.DeleteTask(t.Context(), 0); err != storage.ErrInvalidDisplayID {
+		t.Fatalf("expected ErrInvalidDisplayID for id=0, got %v", err)
+	}
+	if _, err := st.DeleteTask(t.Context(), 2); err != storage.ErrInvalidDisplayID {
+		t.Fatalf("expected ErrInvalidDisplayID for id out of range, got %v", err)
 	}
 }
