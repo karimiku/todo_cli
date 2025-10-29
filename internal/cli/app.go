@@ -122,11 +122,7 @@ func (a *App) Run(ctx context.Context, args []string) int {
 }
 
 func (a *App) printUsage() {
-	display := "todo"
-	if len(a.displayNames) > 0 {
-		display = strings.Join(a.displayNames, "|")
-	}
-	fmt.Fprintf(a.stdout, "usage: %s <command> [arguments]\n", display)
+	fmt.Fprintf(a.stdout, "usage: %s <command> [arguments]\n", a.primaryUsageLabel())
 
 	if len(a.byName) == 0 {
 		fmt.Fprintln(a.stdout, "利用可能なコマンドはまだ登録されていません。")
@@ -144,4 +140,23 @@ func (a *App) printUsage() {
 		cmd := a.byName[strings.ToLower(name)]
 		fmt.Fprintf(a.stdout, "  %-10s %s\n", name, cmd.Description())
 	}
+}
+
+func (a *App) primaryUsageLabel() string {
+	alias := "tb/td"
+	if len(a.displayNames) > 1 {
+		other := make([]string, 0, len(a.displayNames))
+		for _, name := range a.displayNames {
+			lower := strings.ToLower(strings.TrimSpace(name))
+			if lower == "todo" {
+				continue
+			}
+			other = append(other, name)
+		}
+		if len(other) > 0 {
+			alias = strings.Join(other, "/")
+		}
+	}
+
+	return fmt.Sprintf("todo (%s)", alias)
 }
