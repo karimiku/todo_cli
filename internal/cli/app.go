@@ -12,21 +12,45 @@ import (
 
 // App manages command registration and dispatch.
 type App struct {
-	store  *storage.Store
-	stdout io.Writer
-	stderr io.Writer
-	byName map[string]Command
-	lookup map[string]string
+	store        *storage.Store
+	stdout       io.Writer
+	stderr       io.Writer
+	byName       map[string]Command
+	lookup       map[string]string
+	binaryName   string
+	displayNames []string
 }
 
 // NewApp constructs a new App with the provided dependencies.
-func NewApp(store *storage.Store, stdout, stderr io.Writer) *App {
+func NewApp(store *storage.Store, stdout, stderr io.Writer, binaryName string, displayNames []string) *App {
+	seen := make(map[string]struct{})
+	names := make([]string, 0, len(displayNames)+1)
+	addName := func(name string) {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			return
+		}
+		lower := strings.ToLower(trimmed)
+		if _, exists := seen[lower]; exists {
+			return
+		}
+		names = append(names, trimmed)
+		seen[lower] = struct{}{}
+	}
+
+	for _, name := range displayNames {
+		addName(name)
+	}
+	addName(binaryName)
+
 	return &App{
-		store:  store,
-		stdout: stdout,
-		stderr: stderr,
-		byName: make(map[string]Command),
-		lookup: make(map[string]string),
+		store:        store,
+		stdout:       stdout,
+		stderr:       stderr,
+		byName:       make(map[string]Command),
+		lookup:       make(map[string]string),
+		binaryName:   binaryName,
+		displayNames: names,
 	}
 }
 
@@ -82,10 +106,11 @@ func (a *App) Run(ctx context.Context, args []string) int {
 
 	cmd := a.byName[canonical]
 	cmdCtx := &CommandContext{
-		Context: ctx,
-		Store:   a.store,
-		Stdout:  a.stdout,
-		Stderr:  a.stderr,
+		Context:    ctx,
+		Store:      a.store,
+		Stdout:     a.stdout,
+		Stderr:     a.stderr,
+		BinaryName: a.binaryName,
 	}
 
 	if err := cmd.Run(cmdCtx, args[1:]); err != nil {
@@ -97,7 +122,11 @@ func (a *App) Run(ctx context.Context, args []string) int {
 }
 
 func (a *App) printUsage() {
-	fmt.Fprintln(a.stdout, "usage: todo <command> [arguments]")
+	display := "todo"
+	if len(a.displayNames) > 0 {
+		display = strings.Join(a.displayNames, "|")
+	}
+	fmt.Fprintf(a.stdout, "usage: %s <command> [arguments]\n", display)
 
 	if len(a.byName) == 0 {
 		fmt.Fprintln(a.stdout, "利用可能なコマンドはまだ登録されていません。")

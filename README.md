@@ -13,15 +13,17 @@
 
 ```bash
 # ビルド
-go build -o todo .
+go build -o todo ./cmd/todo
+go build -o tb ./cmd/tb
+go build -o td ./cmd/td
 
-# 配置
+# 配置（必要に応じて）
 sudo cp todo /usr/local/bin/
-
-# エイリアス設定 (.zshrc に追加)
-alias tb='todo'
-alias td='todo'
+sudo cp tb /usr/local/bin/
+sudo cp td /usr/local/bin/
 ```
+
+`todo` `tb` `td` は同じデータベースを共有します。好みのコマンド名で実行できます。
 
 ## 使い方
 
