@@ -1,7 +1,9 @@
 package storage_test
 
 import (
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +42,34 @@ func TestOpenInitialisesDatabase(t *testing.T) {
 
 	if strings.ToLower(mode) != "wal" {
 		t.Fatalf("journal_mode = %q, want %q", mode, "wal")
+	}
+}
+
+func TestOpenSetsDBPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file permissions are not enforced on Windows")
+	}
+
+	temp := t.TempDir()
+	dbPath := filepath.Join(temp, "todo.db")
+	st, err := storage.Open(dbPath)
+	if err != nil {
+		t.Fatalf("storage.Open: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := st.Close(); err != nil {
+			t.Fatalf("store.Close: %v", err)
+		}
+	})
+
+	info, err := os.Stat(dbPath)
+	if err != nil {
+		t.Fatalf("os.Stat: %v", err)
+	}
+
+	perm := info.Mode().Perm()
+	if perm != 0o600 && perm != 0o644 {
+		t.Fatalf("unexpected permissions: %#o", perm)
 	}
 }
 
@@ -165,6 +195,44 @@ func TestFocusTaskMovesToTop(t *testing.T) {
 	}
 	if pending[0].OrderKey >= pending[1].OrderKey {
 		t.Fatalf("expected focused order_key < next, got %f vs %f", pending[0].OrderKey, pending[1].OrderKey)
+	}
+}
+
+func TestFocusTaskTriggersNormalizeWhenOrderFloorExceeded(t *testing.T) {
+	st := newStore(t)
+
+	first, err := st.AddTask(t.Context(), "朝会の準備")
+	if err != nil {
+		t.Fatalf("AddTask #1: %v", err)
+	}
+	second, err := st.AddTask(t.Context(), "レビュー")
+	if err != nil {
+		t.Fatalf("AddTask #2: %v", err)
+	}
+
+	if err := st.DB().Model(&storage.Task{}).
+		Where("id = ?", first.ID).
+		Update("order_key", -1e9-0.5).Error; err != nil {
+		t.Fatalf("prepare extreme order: %v", err)
+	}
+
+	focused, err := st.FocusTask(t.Context(), 2)
+	if err != nil {
+		t.Fatalf("FocusTask: %v", err)
+	}
+	if focused.ID != second.ID {
+		t.Fatalf("expected second task to be focused, got %d", focused.ID)
+	}
+
+	pending, _, err := st.ListTasks(t.Context())
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+	if pending[0].ID != second.ID {
+		t.Fatalf("expected second task to be first after normalize, got %d", pending[0].ID)
+	}
+	if pending[0].OrderKey != 1.0 || pending[1].OrderKey != 2.0 {
+		t.Fatalf("expected normalized order keys 1.0/2.0, got %f/%f", pending[0].OrderKey, pending[1].OrderKey)
 	}
 }
 

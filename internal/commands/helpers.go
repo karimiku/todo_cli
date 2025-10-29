@@ -12,6 +12,10 @@ func notifyPendingCount(ctx *cli.CommandContext) error {
 	if err != nil {
 		return err
 	}
+	if count == 0 {
+		fmt.Fprintln(ctx.Stdout, storage.ErrNoPendingTasks.Error())
+		return nil
+	}
 
 	fmt.Fprintf(ctx.Stdout, "未完了の件数は %d 件です\n", count)
 	return nil

@@ -92,7 +92,7 @@ func (a *App) Run(ctx context.Context, args []string) int {
 	}
 
 	name := strings.ToLower(args[0])
-	if name == "help" {
+	if name == "help" || name == "--help" || name == "-h" {
 		a.printUsage()
 		return 0
 	}

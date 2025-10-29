@@ -55,7 +55,7 @@ func (c *ListCommand) Run(ctx *cli.CommandContext, args []string) error {
 		fmt.Fprintln(ctx.Stdout, "---")
 		fmt.Fprintln(ctx.Stdout)
 		for _, task := range completed {
-			fmt.Fprintf(ctx.Stdout, "[x] %s\n", task.Text)
+			fmt.Fprintf(ctx.Stdout, "[✅] %s\n", task.Text)
 		}
 	}
 

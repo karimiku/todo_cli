@@ -46,7 +46,10 @@ func (c *EditCommand) Run(ctx *cli.CommandContext, args []string) error {
 		switch {
 		case errors.Is(err, storage.ErrEmptyText):
 			return err
-		case errors.Is(err, storage.ErrNoPendingTasks), errors.Is(err, storage.ErrInvalidDisplayID):
+		case errors.Is(err, storage.ErrNoPendingTasks):
+			fmt.Fprintln(ctx.Stdout, storage.ErrNoPendingTasks.Error())
+			return nil
+		case errors.Is(err, storage.ErrInvalidDisplayID):
 			if notifyErr := notifyPendingCount(ctx); notifyErr != nil {
 				return notifyErr
 			}

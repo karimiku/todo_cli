@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -57,6 +60,10 @@ func Open(path string) (*Store, error) {
 
 	if err := gormDB.AutoMigrate(&Task{}); err != nil {
 		return nil, fmt.Errorf("auto migrate task schema: %w", err)
+	}
+
+	if err := ensureDBPermissions(path); err != nil {
+		return nil, err
 	}
 
 	return &Store{db: gormDB}, nil
@@ -152,7 +159,26 @@ func (s *Store) FocusTask(ctx context.Context, displayID int) (*Task, error) {
 		}
 
 		minOrder := tasks[0].OrderKey
-		newOrder := minOrder - 1.0
+		newOrder := minOrder - focusOrderStep
+		shouldNormalize := newOrder < focusOrderFloor || math.Abs(minOrder-newOrder) < focusNormalizeEpsilon
+
+		if shouldNormalize {
+			ordered := make([]Task, 0, len(tasks))
+			ordered = append(ordered, target)
+			for idx, task := range tasks {
+				if idx == displayID-1 {
+					continue
+				}
+				ordered = append(ordered, task)
+			}
+
+			if err := rebalanceOrderKeys(tx, ordered); err != nil {
+				return err
+			}
+
+			updated = ordered[0]
+			return nil
+		}
 
 		if err := tx.Model(&Task{}).
 			Where("id = ?", target.ID).
@@ -353,8 +379,12 @@ func (s *Store) DeleteTask(ctx context.Context, displayID int) (*Task, error) {
 		}
 
 		target := tasks[displayID-1]
-		if err := tx.Delete(&Task{}, target.ID).Error; err != nil {
-			return fmt.Errorf("delete task: %w", err)
+		result := tx.Delete(&Task{}, target.ID)
+		if result.Error != nil {
+			return fmt.Errorf("delete task: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("delete task: no rows affected")
 		}
 
 		deleted = target
@@ -453,7 +483,44 @@ func applyPragmas(db *gorm.DB) error {
 	return nil
 }
 
-const normalizeThreshold = 1e-3
+func ensureDBPermissions(path string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return fmt.Errorf("create database file: %w", err)
+	}
+	if closeErr := file.Close(); closeErr != nil {
+		return fmt.Errorf("close database file: %w", closeErr)
+	}
+
+	if err := os.Chmod(path, 0o600); err != nil {
+		var pathErr *os.PathError
+		if errors.As(err, &pathErr) {
+			if errno, ok := pathErr.Err.(syscall.Errno); ok {
+				switch errno {
+				case syscall.EPERM, syscall.ENOTSUP:
+					if chmodErr := os.Chmod(path, 0o644); chmodErr != nil {
+						return fmt.Errorf("set database permissions: %w", chmodErr)
+					}
+					return nil
+				}
+			}
+		}
+		return fmt.Errorf("set database permissions: %w", err)
+	}
+
+	return nil
+}
+
+const (
+	normalizeThreshold    = 1e-3
+	focusOrderStep        = 1.0
+	focusOrderFloor       = -1e9
+	focusNormalizeEpsilon = 1e-6
+)
 
 func loadPendingTasksForUpdate(tx *gorm.DB) ([]Task, error) {
 	var tasks []Task

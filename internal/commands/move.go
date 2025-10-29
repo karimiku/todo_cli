@@ -49,7 +49,10 @@ func (c *MoveCommand) Run(ctx *cli.CommandContext, args []string) error {
 		switch {
 		case errors.Is(err, storage.ErrInvalidPosition):
 			return fmt.Errorf("順位は 1 以上を指定してください")
-		case errors.Is(err, storage.ErrNoPendingTasks), errors.Is(err, storage.ErrInvalidDisplayID):
+		case errors.Is(err, storage.ErrNoPendingTasks):
+			fmt.Fprintln(ctx.Stdout, storage.ErrNoPendingTasks.Error())
+			return nil
+		case errors.Is(err, storage.ErrInvalidDisplayID):
 			if notifyErr := notifyPendingCount(ctx); notifyErr != nil {
 				return notifyErr
 			}
