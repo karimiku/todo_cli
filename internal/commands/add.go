@@ -30,7 +30,7 @@ func (c *AddCommand) Description() string {
 
 func (c *AddCommand) Run(ctx *cli.CommandContext, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: todo add <text>")
+		return fmt.Errorf("usage: %s add <text>", ctx.BinaryName)
 	}
 
 	text := strings.Join(args, " ")

@@ -18,7 +18,8 @@ type Command interface {
 // CommandContext carries shared dependencies for command execution.
 type CommandContext struct {
 	context.Context
-	Store  *storage.Store
-	Stdout io.Writer
-	Stderr io.Writer
+	Store      *storage.Store
+	Stdout     io.Writer
+	Stderr     io.Writer
+	BinaryName string
 }

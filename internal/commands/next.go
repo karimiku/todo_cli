@@ -29,7 +29,7 @@ func (c *NextCommand) Description() string {
 
 func (c *NextCommand) Run(ctx *cli.CommandContext, args []string) error {
 	if len(args) > 0 {
-		return fmt.Errorf("next: 追加の引数は不要です")
+		return fmt.Errorf("追加の引数は不要です")
 	}
 
 	task, err := ctx.Store.CompleteNext(ctx)

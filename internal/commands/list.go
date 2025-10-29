@@ -29,7 +29,7 @@ func (c *ListCommand) Description() string {
 
 func (c *ListCommand) Run(ctx *cli.CommandContext, args []string) error {
 	if len(args) > 0 {
-		return fmt.Errorf("list: 追加の引数は不要です")
+		return fmt.Errorf("追加の引数は不要です")
 	}
 
 	pending, completed, err := ctx.Store.ListTasks(ctx)
