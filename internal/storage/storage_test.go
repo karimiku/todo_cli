@@ -436,3 +436,41 @@ func TestDeleteTaskValidation(t *testing.T) {
 		t.Fatalf("expected ErrInvalidDisplayID for id out of range, got %v", err)
 	}
 }
+
+func TestHeadTaskReturnsFirstPending(t *testing.T) {
+	st := newStore(t)
+	if _, err := st.AddTask(t.Context(), "A"); err != nil {
+		t.Fatalf("AddTask #1: %v", err)
+	}
+	if _, err := st.AddTask(t.Context(), "B"); err != nil {
+		t.Fatalf("AddTask #2: %v", err)
+	}
+
+	first, err := st.HeadTask(t.Context())
+	if err != nil {
+		t.Fatalf("HeadTask: %v", err)
+	}
+	if first.Text != "A" {
+		t.Fatalf("expected first task to be A, got %s", first.Text)
+	}
+
+	if _, err := st.CompleteNext(t.Context()); err != nil {
+		t.Fatalf("CompleteNext: %v", err)
+	}
+
+	second, err := st.HeadTask(t.Context())
+	if err != nil {
+		t.Fatalf("HeadTask after next: %v", err)
+	}
+	if second.Text != "B" {
+		t.Fatalf("expected second task to be B, got %s", second.Text)
+	}
+
+	if _, err := st.CompleteNext(t.Context()); err != nil {
+		t.Fatalf("CompleteNext #2: %v", err)
+	}
+
+	if _, err := st.HeadTask(t.Context()); err != storage.ErrNoPendingTasks {
+		t.Fatalf("expected ErrNoPendingTasks, got %v", err)
+	}
+}

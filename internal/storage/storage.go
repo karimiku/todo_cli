@@ -397,6 +397,23 @@ func (s *Store) DeleteTask(ctx context.Context, displayID int) (*Task, error) {
 	return &deleted, nil
 }
 
+// HeadTask returns the first pending task ordered by queue rules.
+func (s *Store) HeadTask(ctx context.Context) (*Task, error) {
+	var task Task
+	if err := s.db.WithContext(ctx).
+		Where("is_done = ?", false).
+		Order("order_key asc, id asc").
+		Limit(1).
+		First(&task).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNoPendingTasks
+		}
+		return nil, fmt.Errorf("select head task: %w", err)
+	}
+
+	return &task, nil
+}
+
 // ListTasks retrieves pending and completed tasks.
 func (s *Store) ListTasks(ctx context.Context) (pending []Task, completed []Task, err error) {
 	db := s.db.WithContext(ctx)
