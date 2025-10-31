@@ -8,6 +8,7 @@
 - **シンプル**: 日付や締切なし、「今やる順番」だけに集中
 - **ローカル完結**: オフラインで動作、外部送信なし
 - **高速**: 起動〜完了まで体感 < 300ms
+- **メニューバー表示**: SwiftBar/xbar と連携して「今やるべき 1 件」を常時表示
 
 ## インストール
 
@@ -55,6 +56,9 @@ todo delete 2
 
 # 編集
 todo edit 1 メールを確認して返信
+
+# メニューバーに 1 件だけ常時表示
+todo bar --head-only --maxlen 28 --icon "▶️"
 ```
 
 ## データ保存先
@@ -62,9 +66,17 @@ todo edit 1 メールを確認して返信
 - デフォルト: `~/.config/todo/todo.db`
 - カスタム: 環境変数 `TODO_HOME` を設定するとそのディレクトリに保存
 
-## ライセンス
+## メニューバー連携（SwiftBar/xbar）
 
-MIT License (LICENSE ファイルを参照)
+```bash
+# ~/Library/Application Support/SwiftBar/Plugins/todo-next.2s.sh などに配置
+#!/bin/zsh
+todo bar --head-only --maxlen 28 --icon "▶️"
+```
+
+- ファイルに実行権限を付与: `chmod +x todo-next.2s.sh`
+- 更新間隔は 2〜5 秒がおすすめ
+- 行をクリックすると `todo next` が自動実行され、即座に次のタスクへ切り替わります
 
 ## 開発
 
@@ -79,6 +91,6 @@ go build
 go test ./...
 ```
 
-## 目的
+## ライセンス
 
-このプロジェクトは個人利用のみを目的としています。配布・リリースは予定していません。
+現状は公開ライセンスを設定していません。個人利用を前提に運用しています。
