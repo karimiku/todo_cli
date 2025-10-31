@@ -9,10 +9,11 @@ import (
 	"github.com/kamiriku/todo_cli/internal/storage"
 )
 
-// DeleteCommand removes a pending task entirely.
+// DeleteCommand は指定された未完了タスクを物理的に削除するコマンドです。
+// 完了済みタスクは削除されず、listコマンドで確認できます。
 type DeleteCommand struct{}
 
-// NewDeleteCommand constructs the delete command.
+// NewDeleteCommand は delete コマンドのインスタンスを生成します。
 func NewDeleteCommand() cli.Command {
 	return &DeleteCommand{}
 }
@@ -29,6 +30,7 @@ func (c *DeleteCommand) Description() string {
 	return "未完了タスクを削除します"
 }
 
+// Run は指定された未完了タスクを削除します。
 func (c *DeleteCommand) Run(ctx *cli.CommandContext, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: %s delete <id>", ctx.BinaryName)
@@ -46,6 +48,7 @@ func (c *DeleteCommand) Run(ctx *cli.CommandContext, args []string) error {
 			fmt.Fprintln(ctx.Stdout, storage.ErrNoPendingTasks.Error())
 			return nil
 		case errors.Is(err, storage.ErrInvalidDisplayID):
+			// 無効なIDの場合は現在の未完了タスク数を表示
 			if notifyErr := notifyPendingCount(ctx); notifyErr != nil {
 				return notifyErr
 			}

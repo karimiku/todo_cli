@@ -18,35 +18,40 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// Task represents a Todo item persisted in SQLite.
+// Task はSQLiteに永続化されるTodoアイテムを表します。
+// タスクの順序管理には浮動小数点数の order_key を使用し、
+// 挿入や移動の際に中間値を計算することで順序を柔軟に管理します。
 type Task struct {
-	ID        uint      `gorm:"primaryKey"`
-	Text      string    `gorm:"type:text;not null"`
-	IsDone    bool      `gorm:"not null;index:idx_tasks_undone_order,priority:1"`
-	OrderKey  float64   `gorm:"not null;index:idx_tasks_undone_order,priority:2"`
-	CreatedAt time.Time `gorm:"not null;autoCreateTime"`
-	UpdatedAt time.Time `gorm:"not null;autoUpdateTime"`
+	ID        uint      `gorm:"primaryKey"`                                                      // タスクの一意識別子
+	Text      string    `gorm:"type:text;not null"`                                              // タスクの本文
+	IsDone    bool      `gorm:"not null;index:idx_tasks_undone_order,priority:1"`                // 完了フラグ（false=未完了、true=完了）
+	OrderKey  float64   `gorm:"not null;index:idx_tasks_undone_order,priority:2"`                // 順序を決定するキー（小さいほど優先度が高い）
+	CreatedAt time.Time `gorm:"not null;autoCreateTime"`                                         // 作成日時
+	UpdatedAt time.Time `gorm:"not null;autoUpdateTime"`                                        // 更新日時
 }
 
-// Store owns the database connection used across commands.
+// Store はコマンド間で共有されるデータベース接続を管理します。
+// すべてのタスク操作はこのStoreを通じて行われます。
 type Store struct {
-	db *gorm.DB
+	db *gorm.DB // GORMのデータベース接続
 }
 
-// ErrEmptyText indicates the provided text was blank.
+// ErrEmptyText は空のテキストが提供された場合に返されるエラーです。
 var ErrEmptyText = errors.New("空のテキストは不可")
 
-// ErrNoPendingTasks is returned when an operation requires pending tasks but none exist.
+// ErrNoPendingTasks は未完了タスクが必要な操作で未完了タスクが存在しない場合に返されるエラーです。
 var ErrNoPendingTasks = errors.New("未完了はありません 🎉")
 
-// ErrInvalidDisplayID indicates the provided display number is out of range.
+// ErrInvalidDisplayID は指定された表示番号が範囲外の場合に返されるエラーです。
 var ErrInvalidDisplayID = errors.New("指定した番号のタスクは見つかりません")
 
-// ErrInvalidPosition indicates the provided target position is invalid.
+// ErrInvalidPosition は指定された移動先の位置が不正な場合に返されるエラーです。
 var ErrInvalidPosition = errors.New("移動先の番号が不正です")
 
-// Open initialises a new Store backed by SQLite located at the provided path.
+// Open は指定されたパスのSQLiteデータベースを使用して新しいStoreを初期化します。
+// データベースが存在しない場合は作成し、スキーマのマイグレーションも自動的に実行します。
 func Open(path string) (*Store, error) {
+	// SQLiteデータベースを開く（ログは出力しない）
 	gormDB, err := gorm.Open(sqlite.Open(path), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
@@ -54,14 +59,17 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("open sqlite database: %w", err)
 	}
 
+	// SQLiteの設定（WALモード、タイムアウトなど）を適用
 	if err := applyPragmas(gormDB); err != nil {
 		return nil, err
 	}
 
+	// スキーマの自動マイグレーション（テーブルが存在しない場合は作成）
 	if err := gormDB.AutoMigrate(&Task{}); err != nil {
 		return nil, fmt.Errorf("auto migrate task schema: %w", err)
 	}
 
+	// データベースファイルのパーミッション設定（セキュリティ対策）
 	if err := ensureDBPermissions(path); err != nil {
 		return nil, err
 	}
@@ -69,12 +77,14 @@ func Open(path string) (*Store, error) {
 	return &Store{db: gormDB}, nil
 }
 
-// DB exposes the underlying *gorm.DB, primarily for transactional operations.
+// DB は内部の *gorm.DB を公開します。
+// 主にトランザクション操作など、低レベルなデータベース操作が必要な場合に使用します。
 func (s *Store) DB() *gorm.DB {
 	return s.db
 }
 
-// Close releases the underlying database resources.
+// Close はデータベース接続を閉じてリソースを解放します。
+// アプリケーション終了時やテスト終了時に呼び出す必要があります。
 func (s *Store) Close() error {
 	sqlDB, err := s.db.DB()
 	if err != nil {
@@ -84,8 +94,9 @@ func (s *Store) Close() error {
 	return sqlDB.Close()
 }
 
-// AddTask appends a new task to the end of the pending list.
+// AddTask は新しいタスクを未完了リストの末尾に追加します。
 func (s *Store) AddTask(ctx context.Context, text string) (*Task, error) {
+	// 前後の空白を削除し、空文字チェック
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
 		return nil, ErrEmptyText
@@ -93,7 +104,9 @@ func (s *Store) AddTask(ctx context.Context, text string) (*Task, error) {
 
 	var task Task
 	db := s.db.WithContext(ctx)
+	// トランザクション内で実行（競合を防ぐため）
 	err := db.Transaction(func(tx *gorm.DB) error {
+		// 未完了タスクの最大 order_key を取得（タスクが存在しない場合は0）
 		var maxOrder sql.NullFloat64
 		if err := tx.Model(&Task{}).
 			Where("is_done = ?", false).
@@ -102,6 +115,7 @@ func (s *Store) AddTask(ctx context.Context, text string) (*Task, error) {
 			return fmt.Errorf("select max order: %w", err)
 		}
 
+		// 新しいタスクを作成（order_key は最大値+1）
 		now := time.Now().UTC()
 		task = Task{
 			Text:      trimmed,
@@ -124,7 +138,7 @@ func (s *Store) AddTask(ctx context.Context, text string) (*Task, error) {
 	return &task, nil
 }
 
-// FocusTask moves the specified pending task to the very top of the queue.
+// FocusTask は指定されたタスクを未完了リストの最上位に移動します。
 func (s *Store) FocusTask(ctx context.Context, displayID int) (*Task, error) {
 	if displayID < 1 {
 		return nil, ErrInvalidDisplayID
@@ -133,6 +147,7 @@ func (s *Store) FocusTask(ctx context.Context, displayID int) (*Task, error) {
 	db := s.db.WithContext(ctx)
 	var updated Task
 	err := db.Transaction(func(tx *gorm.DB) error {
+		// 排他ロックをかけて未完了タスクを取得
 		tasks, err := loadPendingTasksForUpdate(tx)
 		if err != nil {
 			return err
@@ -146,6 +161,8 @@ func (s *Store) FocusTask(ctx context.Context, displayID int) (*Task, error) {
 
 		target := tasks[displayID-1]
 		now := time.Now().UTC()
+
+		// 既に最上位の場合は updated_at を更新するだけ
 		if displayID == 1 {
 			if err := tx.Model(&Task{}).
 				Where("id = ?", target.ID).
@@ -158,16 +175,20 @@ func (s *Store) FocusTask(ctx context.Context, displayID int) (*Task, error) {
 			return nil
 		}
 
+		// 現在の最上位タスクの order_key より小さい値を設定
 		minOrder := tasks[0].OrderKey
 		newOrder := minOrder - focusOrderStep
+
+		// order_key が下限を下回るか、差が小さすぎる場合は再調整が必要
 		shouldNormalize := newOrder < focusOrderFloor || math.Abs(minOrder-newOrder) < focusNormalizeEpsilon
 
 		if shouldNormalize {
+			// タスクを再配置して order_key を1, 2, 3...と再計算
 			ordered := make([]Task, 0, len(tasks))
-			ordered = append(ordered, target)
+			ordered = append(ordered, target) // 対象タスクを先頭に
 			for idx, task := range tasks {
 				if idx == displayID-1 {
-					continue
+					continue // 対象タスクは既に追加済み
 				}
 				ordered = append(ordered, task)
 			}
@@ -180,6 +201,7 @@ func (s *Store) FocusTask(ctx context.Context, displayID int) (*Task, error) {
 			return nil
 		}
 
+		// 通常の場合は order_key を更新するだけ
 		if err := tx.Model(&Task{}).
 			Where("id = ?", target.ID).
 			Updates(map[string]any{
@@ -201,7 +223,7 @@ func (s *Store) FocusTask(ctx context.Context, displayID int) (*Task, error) {
 	return &updated, nil
 }
 
-// MoveTask reorders the pending task to the requested position (1-indexed).
+// MoveTask は指定されたタスクを要求された位置に移動します。
 func (s *Store) MoveTask(ctx context.Context, displayID, targetPos int) (*Task, error) {
 	if displayID < 1 {
 		return nil, ErrInvalidDisplayID
@@ -213,6 +235,7 @@ func (s *Store) MoveTask(ctx context.Context, displayID, targetPos int) (*Task, 
 	db := s.db.WithContext(ctx)
 	var updated Task
 	err := db.Transaction(func(tx *gorm.DB) error {
+		// 排他ロックをかけて未完了タスクを取得
 		tasks, err := loadPendingTasksForUpdate(tx)
 		if err != nil {
 			return err
@@ -226,8 +249,10 @@ func (s *Store) MoveTask(ctx context.Context, displayID, targetPos int) (*Task, 
 		}
 
 		oldIdx := displayID - 1
-		targetIndex := clamp(targetPos-1, 0, n-1)
+		targetIndex := clamp(targetPos-1, 0, n-1) // 範囲外の場合は端にクランプ
 		target := tasks[oldIdx]
+
+		// 同じ位置の場合は updated_at を更新するだけ
 		if oldIdx == targetIndex {
 			target.UpdatedAt = time.Now().UTC()
 			if err := tx.Model(&Task{}).
@@ -239,6 +264,7 @@ func (s *Store) MoveTask(ctx context.Context, displayID, targetPos int) (*Task, 
 			return nil
 		}
 
+		// 対象タスクを除いたリストを作成
 		remaining := make([]Task, 0, n-1)
 		for i, task := range tasks {
 			if i == oldIdx {
@@ -247,6 +273,7 @@ func (s *Store) MoveTask(ctx context.Context, displayID, targetPos int) (*Task, 
 			remaining = append(remaining, task)
 		}
 
+		// 新しい位置に挿入
 		insertIdx := targetIndex
 		if insertIdx < 0 {
 			insertIdx = 0
@@ -255,12 +282,14 @@ func (s *Store) MoveTask(ctx context.Context, displayID, targetPos int) (*Task, 
 			insertIdx = len(remaining)
 		}
 
+		// 再配置後の順序を構築
 		ordered := make([]Task, 0, n)
 		ordered = append(ordered, remaining[:insertIdx]...)
 		ordered = append(ordered, target)
 		ordered = append(ordered, remaining[insertIdx:]...)
 		finalIdx := insertIdx
 
+		// 前後のタスクを取得（order_key を計算するため）
 		prev := (*Task)(nil)
 		next := (*Task)(nil)
 		if finalIdx > 0 {
@@ -270,16 +299,22 @@ func (s *Store) MoveTask(ctx context.Context, displayID, targetPos int) (*Task, 
 			next = &ordered[finalIdx+1]
 		}
 
+		// 新しい order_key を計算
 		var newOrder float64
 		switch {
 		case prev == nil && next == nil:
+			// タスクが1件だけの場合
 			newOrder = 1.0
 		case prev == nil:
+			// 先頭に移動する場合
 			newOrder = next.OrderKey - 1.0
 		case next == nil:
+			// 末尾に移動する場合
 			newOrder = prev.OrderKey + 1.0
 		default:
+			// 中間に移動する場合：前後の order_key の平均値を使用
 			gap := math.Abs(prev.OrderKey - next.OrderKey)
+			// 差が小さすぎる場合は再調整が必要
 			if gap < normalizeThreshold {
 				if err := rebalanceOrderKeys(tx, ordered); err != nil {
 					return err
@@ -289,6 +324,7 @@ func (s *Store) MoveTask(ctx context.Context, displayID, targetPos int) (*Task, 
 			newOrder = (prev.OrderKey + next.OrderKey) / 2.0
 		}
 
+		// order_key を更新
 		now := time.Now().UTC()
 		if err := tx.Model(&Task{}).
 			Where("id = ?", target.ID).
@@ -311,11 +347,12 @@ func (s *Store) MoveTask(ctx context.Context, displayID, targetPos int) (*Task, 
 	return &updated, nil
 }
 
-// EditTask updates the text of the specified pending task.
+// EditTask は指定されたタスクの本文を更新します。
 func (s *Store) EditTask(ctx context.Context, displayID int, text string) (*Task, error) {
 	if displayID < 1 {
 		return nil, ErrInvalidDisplayID
 	}
+	// 前後の空白を削除し、空文字チェック
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
 		return nil, ErrEmptyText
@@ -324,6 +361,7 @@ func (s *Store) EditTask(ctx context.Context, displayID int, text string) (*Task
 	db := s.db.WithContext(ctx)
 	var updated Task
 	err := db.Transaction(func(tx *gorm.DB) error {
+		// 排他ロックをかけて未完了タスクを取得
 		tasks, err := loadPendingTasksForUpdate(tx)
 		if err != nil {
 			return err
@@ -335,6 +373,7 @@ func (s *Store) EditTask(ctx context.Context, displayID int, text string) (*Task
 			return ErrInvalidDisplayID
 		}
 
+		// 対象タスクを取得して本文を更新
 		target := tasks[displayID-1]
 		now := time.Now().UTC()
 		if err := tx.Model(&Task{}).
@@ -358,7 +397,7 @@ func (s *Store) EditTask(ctx context.Context, displayID int, text string) (*Task
 	return &updated, nil
 }
 
-// DeleteTask removes the specified pending task.
+// DeleteTask は指定された未完了タスクを物理的に削除します。
 func (s *Store) DeleteTask(ctx context.Context, displayID int) (*Task, error) {
 	if displayID < 1 {
 		return nil, ErrInvalidDisplayID
@@ -367,6 +406,7 @@ func (s *Store) DeleteTask(ctx context.Context, displayID int) (*Task, error) {
 	db := s.db.WithContext(ctx)
 	var deleted Task
 	err := db.Transaction(func(tx *gorm.DB) error {
+		// 排他ロックをかけて未完了タスクを取得
 		tasks, err := loadPendingTasksForUpdate(tx)
 		if err != nil {
 			return err
@@ -378,6 +418,7 @@ func (s *Store) DeleteTask(ctx context.Context, displayID int) (*Task, error) {
 			return ErrInvalidDisplayID
 		}
 
+		// 対象タスクを削除
 		target := tasks[displayID-1]
 		result := tx.Delete(&Task{}, target.ID)
 		if result.Error != nil {
@@ -397,7 +438,7 @@ func (s *Store) DeleteTask(ctx context.Context, displayID int) (*Task, error) {
 	return &deleted, nil
 }
 
-// HeadTask returns the first pending task ordered by queue rules.
+// HeadTask は未完了タスクの先頭（最小の order_key）を取得します。
 func (s *Store) HeadTask(ctx context.Context) (*Task, error) {
 	var task Task
 	if err := s.db.WithContext(ctx).
@@ -414,16 +455,18 @@ func (s *Store) HeadTask(ctx context.Context) (*Task, error) {
 	return &task, nil
 }
 
-// ListTasks retrieves pending and completed tasks.
+// ListTasks は未完了タスクと完了済みタスクを取得します。
 func (s *Store) ListTasks(ctx context.Context) (pending []Task, completed []Task, err error) {
 	db := s.db.WithContext(ctx)
 
+	// 未完了タスクを order_key の昇順で取得
 	if err = db.Where("is_done = ?", false).
 		Order("order_key asc, id asc").
 		Find(&pending).Error; err != nil {
 		return nil, nil, fmt.Errorf("list pending tasks: %w", err)
 	}
 
+	// 完了済みタスクを更新日時の降順で最大50件取得
 	if err = db.Where("is_done = ?", true).
 		Order("updated_at desc, id desc").
 		Limit(50).
@@ -434,11 +477,12 @@ func (s *Store) ListTasks(ctx context.Context) (pending []Task, completed []Task
 	return pending, completed, nil
 }
 
-// CompleteNext marks the top-most pending task as done.
+// CompleteNext は未完了タスクの先頭（最小の order_key）を完了状態にします。
 func (s *Store) CompleteNext(ctx context.Context) (*Task, error) {
 	db := s.db.WithContext(ctx)
 	var updated Task
 	err := db.Transaction(func(tx *gorm.DB) error {
+		// 未完了タスクの先頭を取得（order_key が最小のもの）
 		var task Task
 		if err := tx.Where("is_done = ?", false).
 			Order("order_key asc, id asc").
@@ -449,6 +493,7 @@ func (s *Store) CompleteNext(ctx context.Context) (*Task, error) {
 			return fmt.Errorf("select next task: %w", err)
 		}
 
+		// タスクを完了状態に更新
 		now := time.Now().UTC()
 		if err := tx.Model(&Task{}).
 			Where("id = ?", task.ID).
@@ -475,17 +520,19 @@ func (s *Store) CompleteNext(ctx context.Context) (*Task, error) {
 	return &updated, nil
 }
 
+// applyPragmas はSQLiteの設定を適用します。
 func applyPragmas(db *gorm.DB) error {
 	sqlDB, err := db.DB()
 	if err != nil {
 		return fmt.Errorf("access sql.DB: %w", err)
 	}
 
+	// SQLiteの設定を適用
 	pragmas := []string{
-		"PRAGMA journal_mode = WAL;",
-		"PRAGMA synchronous = NORMAL;",
-		"PRAGMA foreign_keys = ON;",
-		"PRAGMA busy_timeout = 4000;",
+		"PRAGMA journal_mode = WAL;",    // Write-Ahead Logging（パフォーマンス向上）
+		"PRAGMA synchronous = NORMAL;",   // 同期モード（バランスの取れた設定）
+		"PRAGMA foreign_keys = ON;",      // 外部キー制約を有効化
+		"PRAGMA busy_timeout = 4000;",    // ロック待機タイムアウト（4秒）
 	}
 
 	for _, pragma := range pragmas {
@@ -494,17 +541,21 @@ func applyPragmas(db *gorm.DB) error {
 		}
 	}
 
+	// 接続プールの設定（SQLiteは単一接続推奨）
 	sqlDB.SetMaxOpenConns(1)
 	sqlDB.SetConnMaxLifetime(0)
 
 	return nil
 }
 
+// ensureDBPermissions はデータベースファイルのパーミッションを設定します。
 func ensureDBPermissions(path string) error {
+	// Windowsではパーミッション設定が不要
 	if runtime.GOOS == "windows" {
 		return nil
 	}
 
+	// ファイルが存在しない場合は作成
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return fmt.Errorf("create database file: %w", err)
@@ -513,10 +564,12 @@ func ensureDBPermissions(path string) error {
 		return fmt.Errorf("close database file: %w", closeErr)
 	}
 
+	// パーミッションを600（所有者のみ読み書き可能）に設定
 	if err := os.Chmod(path, 0o600); err != nil {
 		var pathErr *os.PathError
 		if errors.As(err, &pathErr) {
 			if errno, ok := pathErr.Err.(syscall.Errno); ok {
+				// パーミッション設定ができない環境（EPERM, ENOTSUP）の場合は644にフォールバック
 				switch errno {
 				case syscall.EPERM, syscall.ENOTSUP:
 					if chmodErr := os.Chmod(path, 0o644); chmodErr != nil {
@@ -533,16 +586,26 @@ func ensureDBPermissions(path string) error {
 }
 
 const (
-	normalizeThreshold    = 1e-3
-	focusOrderStep        = 1.0
-	focusOrderFloor       = -1e9
+	// normalizeThreshold は order_key の再調整が必要と判断する閾値です。
+	// 前後の order_key の差がこの値より小さい場合、再調整が行われます。
+	normalizeThreshold = 1e-3
+
+	// focusOrderStep は focus コマンドで order_key を減らす際のステップ値です。
+	focusOrderStep = 1.0
+
+	// focusOrderFloor は order_key の下限値です。
+	// この値を下回る場合は再調整が必要と判断されます。
+	focusOrderFloor = -1e9
+
+	// focusNormalizeEpsilon は focus コマンドで再調整が必要か判断する際の閾値です。
 	focusNormalizeEpsilon = 1e-6
 )
 
+// loadPendingTasksForUpdate は排他ロックをかけて未完了タスクを取得します。
 func loadPendingTasksForUpdate(tx *gorm.DB) ([]Task, error) {
 	var tasks []Task
 	if err := tx.
-		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Clauses(clause.Locking{Strength: "UPDATE"}). // SELECT FOR UPDATE（排他ロック）
 		Where("is_done = ?", false).
 		Order("order_key asc, id asc").
 		Find(&tasks).Error; err != nil {
@@ -552,6 +615,7 @@ func loadPendingTasksForUpdate(tx *gorm.DB) ([]Task, error) {
 	return tasks, nil
 }
 
+// mapStorageError はストレージ層のエラーを適切なエラー型にマッピングします。
 func mapStorageError(err error) error {
 	switch {
 	case errors.Is(err, ErrNoPendingTasks):
@@ -565,6 +629,7 @@ func mapStorageError(err error) error {
 	}
 }
 
+// clamp は値を指定された範囲内に制限します。
 func clamp(value, min, max int) int {
 	if value < min {
 		return min
@@ -575,9 +640,11 @@ func clamp(value, min, max int) int {
 	return value
 }
 
+// rebalanceOrderKeys はタスクの order_key を1, 2, 3...と連番で再計算します。
 func rebalanceOrderKeys(tx *gorm.DB, ordered []Task) error {
 	now := time.Now().UTC()
 	for idx, task := range ordered {
+		// 1から始まる連番を order_key として設定
 		order := float64(idx + 1)
 		updates := map[string]any{
 			"order_key":  order,
@@ -588,6 +655,7 @@ func rebalanceOrderKeys(tx *gorm.DB, ordered []Task) error {
 			Updates(updates).Error; err != nil {
 			return fmt.Errorf("rebalance task order: %w", err)
 		}
+		// スライス内のタスクも更新（参照を保持するため）
 		if task.ID == ordered[idx].ID {
 			ordered[idx].OrderKey = order
 			ordered[idx].UpdatedAt = now

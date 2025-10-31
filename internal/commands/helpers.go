@@ -7,6 +7,7 @@ import (
 	"github.com/kamiriku/todo_cli/internal/storage"
 )
 
+// notifyPendingCount は現在の未完了タスク数をユーザーに通知します。
 func notifyPendingCount(ctx *cli.CommandContext) error {
 	count, err := pendingCount(ctx)
 	if err != nil {
@@ -21,6 +22,7 @@ func notifyPendingCount(ctx *cli.CommandContext) error {
 	return nil
 }
 
+// pendingCount は現在の未完了タスク数を取得します。
 func pendingCount(ctx *cli.CommandContext) (int, error) {
 	pending, _, err := ctx.Store.ListTasks(ctx)
 	if err != nil {
@@ -30,6 +32,7 @@ func pendingCount(ctx *cli.CommandContext) (int, error) {
 	return len(pending), nil
 }
 
+// currentPosition は指定されたタスクIDの現在の表示位置（1から始まる）を取得します。
 func currentPosition(ctx *cli.CommandContext, id uint) (int, error) {
 	pending, _, err := ctx.Store.ListTasks(ctx)
 	if err != nil {

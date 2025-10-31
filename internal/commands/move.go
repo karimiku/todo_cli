@@ -9,10 +9,10 @@ import (
 	"github.com/kamiriku/todo_cli/internal/storage"
 )
 
-// MoveCommand reorders a task to the requested position.
+// MoveCommand は指定されたタスクを任意の位置に移動するコマンドです。
 type MoveCommand struct{}
 
-// NewMoveCommand constructs the move command.
+// NewMoveCommand は move コマンドのインスタンスを生成します。
 func NewMoveCommand() cli.Command {
 	return &MoveCommand{}
 }
@@ -29,6 +29,7 @@ func (c *MoveCommand) Description() string {
 	return "タスクの順番を入れ替えます"
 }
 
+// Run は指定されたタスクを要求された位置に移動します。
 func (c *MoveCommand) Run(ctx *cli.CommandContext, args []string) error {
 	if len(args) != 2 {
 		return fmt.Errorf("usage: %s move <id> <pos>", ctx.BinaryName)
@@ -53,6 +54,7 @@ func (c *MoveCommand) Run(ctx *cli.CommandContext, args []string) error {
 			fmt.Fprintln(ctx.Stdout, storage.ErrNoPendingTasks.Error())
 			return nil
 		case errors.Is(err, storage.ErrInvalidDisplayID):
+			// 無効なIDの場合は現在の未完了タスク数を表示
 			if notifyErr := notifyPendingCount(ctx); notifyErr != nil {
 				return notifyErr
 			}
@@ -62,6 +64,7 @@ func (c *MoveCommand) Run(ctx *cli.CommandContext, args []string) error {
 		}
 	}
 
+	// 移動後の実際の位置を取得して表示
 	position, err := currentPosition(ctx, task.ID)
 	if err != nil {
 		return err

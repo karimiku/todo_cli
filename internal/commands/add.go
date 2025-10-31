@@ -8,10 +8,10 @@ import (
 	"github.com/kamiriku/todo_cli/internal/storage"
 )
 
-// AddCommand appends a new task to the queue.
+// AddCommand は新しいタスクを未完了リストの末尾に追加するコマンドです。
 type AddCommand struct{}
 
-// NewAddCommand constructs the add command.
+// NewAddCommand は add コマンドのインスタンスを生成します。
 func NewAddCommand() cli.Command {
 	return &AddCommand{}
 }
@@ -28,11 +28,13 @@ func (c *AddCommand) Description() string {
 	return "未完了タスクを末尾へ追加します"
 }
 
+// Run は新しいタスクを未完了リストの末尾に追加します。
 func (c *AddCommand) Run(ctx *cli.CommandContext, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: %s add <text>", ctx.BinaryName)
 	}
 
+	// 複数の引数は空白で結合して1つのテキストとして扱う
 	text := strings.Join(args, " ")
 	task, err := ctx.Store.AddTask(ctx, text)
 	if err != nil {

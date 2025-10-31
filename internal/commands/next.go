@@ -7,10 +7,10 @@ import (
 	"github.com/kamiriku/todo_cli/internal/storage"
 )
 
-// NextCommand marks the top pending task as complete.
+// NextCommand は未完了タスクの先頭を完了状態にするコマンドです。
 type NextCommand struct{}
 
-// NewNextCommand constructs the next command.
+// NewNextCommand は next コマンドのインスタンスを生成します。
 func NewNextCommand() cli.Command {
 	return &NextCommand{}
 }
@@ -27,6 +27,7 @@ func (c *NextCommand) Description() string {
 	return "先頭のタスクを完了します"
 }
 
+// Run は未完了タスクの先頭を完了状態にします。
 func (c *NextCommand) Run(ctx *cli.CommandContext, args []string) error {
 	if len(args) > 0 {
 		return fmt.Errorf("追加の引数は不要です")

@@ -9,10 +9,10 @@ import (
 	"github.com/kamiriku/todo_cli/internal/storage"
 )
 
-// FocusCommand promotes a task to the top of the pending list.
+// FocusCommand は指定されたタスクを未完了リストの最上位に移動するコマンドです。
 type FocusCommand struct{}
 
-// NewFocusCommand constructs the focus command.
+// NewFocusCommand は focus コマンドのインスタンスを生成します。
 func NewFocusCommand() cli.Command {
 	return &FocusCommand{}
 }
@@ -29,6 +29,7 @@ func (c *FocusCommand) Description() string {
 	return "指定番号のタスクを最優先にします"
 }
 
+// Run は指定されたタスクを未完了リストの最上位に移動します。
 func (c *FocusCommand) Run(ctx *cli.CommandContext, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: %s focus <id>", ctx.BinaryName)
@@ -46,6 +47,7 @@ func (c *FocusCommand) Run(ctx *cli.CommandContext, args []string) error {
 			fmt.Fprintln(ctx.Stdout, storage.ErrNoPendingTasks.Error())
 			return nil
 		case errors.Is(err, storage.ErrInvalidDisplayID):
+			// 無効なIDの場合は現在の未完了タスク数を表示
 			if notifyErr := notifyPendingCount(ctx); notifyErr != nil {
 				return notifyErr
 			}
