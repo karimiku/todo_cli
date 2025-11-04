@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/kamiriku/todo_cli/internal/cli"
 	"github.com/kamiriku/todo_cli/internal/storage"
@@ -53,13 +54,30 @@ func (c *ListCommand) Run(ctx *cli.CommandContext, args []string) error {
 		}
 	}
 
-	// 完了済みタスクがあれば区切り線の後に表示
+	// 完了済みタスクがあれば区切り線の後に日付ごとにグルーピングして表示
 	if len(completed) > 0 {
 		fmt.Fprintln(ctx.Stdout)
 		fmt.Fprintln(ctx.Stdout, "---")
 		fmt.Fprintln(ctx.Stdout)
-		for _, task := range completed {
-			fmt.Fprintf(ctx.Stdout, "[✅] %s\n", task.Text)
+
+		// 日付ごとにグルーピング
+		grouped := groupTasksByDate(completed)
+
+		// 日付を降順でソート（新しい日付が先頭）
+		dates := make([]string, 0, len(grouped))
+		for date := range grouped {
+			dates = append(dates, date)
+		}
+		sort.Sort(sort.Reverse(sort.StringSlice(dates)))
+
+		// 日付ごとに表示
+		for _, date := range dates {
+			tasksForDate := grouped[date]
+			fmt.Fprintf(ctx.Stdout, "%s (%d件)\n", date, len(tasksForDate))
+			for _, task := range tasksForDate {
+				fmt.Fprintf(ctx.Stdout, "  [✅] %s\n", task.Text)
+			}
+			fmt.Fprintln(ctx.Stdout)
 		}
 	}
 
