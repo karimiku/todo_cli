@@ -477,6 +477,51 @@ func (s *Store) ListTasks(ctx context.Context) (pending []Task, completed []Task
 	return pending, completed, nil
 }
 
+// ListAllCompletedTasks は全ての完了済みタスクを取得します。
+func (s *Store) ListAllCompletedTasks(ctx context.Context) ([]Task, error) {
+	var tasks []Task
+	if err := s.db.WithContext(ctx).
+		Where("is_done = ?", true).
+		Order("updated_at desc, id desc").
+		Find(&tasks).Error; err != nil {
+		return nil, fmt.Errorf("list all completed tasks: %w", err)
+	}
+	return tasks, nil
+}
+
+// DeleteCompletedTasksByDate は指定された日付の完了済みタスクを削除します。
+// dateは YYYY/MM/DD 形式の文字列で、時刻部分は無視されます。
+func (s *Store) DeleteCompletedTasksByDate(ctx context.Context, date string) (int, error) {
+	// 日付文字列をパース（YYYY/MM/DD形式）
+	dateLayout := "2006/01/02"
+	targetDate, err := time.Parse(dateLayout, date)
+	if err != nil {
+		return 0, fmt.Errorf("invalid date format: %w (expected YYYY/MM/DD)", err)
+	}
+
+	// 日付の開始時刻と終了時刻を計算（UTC）
+	startOfDay := time.Date(targetDate.Year(), targetDate.Month(), targetDate.Day(), 0, 0, 0, 0, time.UTC)
+	endOfDay := startOfDay.Add(24 * time.Hour)
+
+	var deletedCount int64
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 指定された日付の完了済みタスクを削除
+		result := tx.Where("is_done = ? AND updated_at >= ? AND updated_at < ?", true, startOfDay, endOfDay).
+			Delete(&Task{})
+		if result.Error != nil {
+			return fmt.Errorf("delete completed tasks by date: %w", result.Error)
+		}
+		deletedCount = result.RowsAffected
+		return nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	return int(deletedCount), nil
+}
+
 // CompleteNext は未完了タスクの先頭（最小の order_key）を完了状態にします。
 func (s *Store) CompleteNext(ctx context.Context) (*Task, error) {
 	db := s.db.WithContext(ctx)
