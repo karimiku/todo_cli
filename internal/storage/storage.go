@@ -40,7 +40,7 @@ type Store struct {
 var ErrEmptyText = errors.New("空のテキストは不可")
 
 // ErrNoPendingTasks は未完了タスクが必要な操作で未完了タスクが存在しない場合に返されるエラーです。
-var ErrNoPendingTasks = errors.New("Todo 完了 🎉")
+var ErrNoPendingTasks = errors.New("未完了はありません 🎉")
 
 // ErrInvalidDisplayID は指定された表示番号が範囲外の場合に返されるエラーです。
 var ErrInvalidDisplayID = errors.New("指定した番号のタスクは見つかりません")
