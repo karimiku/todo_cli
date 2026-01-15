@@ -1,6 +1,7 @@
 package storage_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -76,15 +77,15 @@ func TestOpenSetsDBPermissions(t *testing.T) {
 func TestAddAndListTasks(t *testing.T) {
 	st := newStore(t)
 
-	if _, err := st.AddTask(t.Context(), "メール返信"); err != nil {
+	if _, err := st.AddTask(context.Background(), "メール返信"); err != nil {
 		t.Fatalf("AddTask: %v", err)
 	}
 
-	if _, err := st.AddTask(t.Context(), "図書館に本返却"); err != nil {
+	if _, err := st.AddTask(context.Background(), "図書館に本返却"); err != nil {
 		t.Fatalf("AddTask: %v", err)
 	}
 
-	pending, completed, err := st.ListTasks(t.Context())
+	pending, completed, err := st.ListTasks(context.Background())
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
@@ -105,16 +106,16 @@ func TestAddAndListTasks(t *testing.T) {
 func TestCompleteNext(t *testing.T) {
 	st := newStore(t)
 
-	first, err := st.AddTask(t.Context(), "メール返信")
+	first, err := st.AddTask(context.Background(), "メール返信")
 	if err != nil {
 		t.Fatalf("AddTask #1: %v", err)
 	}
 
-	if _, err := st.AddTask(t.Context(), "図書館に本返却"); err != nil {
+	if _, err := st.AddTask(context.Background(), "図書館に本返却"); err != nil {
 		t.Fatalf("AddTask #2: %v", err)
 	}
 
-	task, err := st.CompleteNext(t.Context())
+	task, err := st.CompleteNext(context.Background())
 	if err != nil {
 		t.Fatalf("CompleteNext: %v", err)
 	}
@@ -127,7 +128,7 @@ func TestCompleteNext(t *testing.T) {
 		t.Fatalf("completed task must be marked done")
 	}
 
-	pending, completed, err := st.ListTasks(t.Context())
+	pending, completed, err := st.ListTasks(context.Background())
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
@@ -144,7 +145,7 @@ func TestCompleteNext(t *testing.T) {
 func TestAddTaskEmptyText(t *testing.T) {
 	st := newStore(t)
 
-	if _, err := st.AddTask(t.Context(), " "); err == nil {
+	if _, err := st.AddTask(context.Background(), " "); err == nil {
 		t.Fatalf("expected error for empty text")
 	} else if err != storage.ErrEmptyText {
 		t.Fatalf("expected ErrEmptyText, got %v", err)
@@ -154,7 +155,7 @@ func TestAddTaskEmptyText(t *testing.T) {
 func TestCompleteNextNoTasks(t *testing.T) {
 	st := newStore(t)
 
-	if _, err := st.CompleteNext(t.Context()); err != storage.ErrNoPendingTasks {
+	if _, err := st.CompleteNext(context.Background()); err != storage.ErrNoPendingTasks {
 		t.Fatalf("expected ErrNoPendingTasks, got %v", err)
 	}
 }
@@ -162,19 +163,19 @@ func TestCompleteNextNoTasks(t *testing.T) {
 func TestFocusTaskMovesToTop(t *testing.T) {
 	st := newStore(t)
 
-	first, err := st.AddTask(t.Context(), "朝会の準備")
+	first, err := st.AddTask(context.Background(), "朝会の準備")
 	if err != nil {
 		t.Fatalf("AddTask #1: %v", err)
 	}
-	if _, err := st.AddTask(t.Context(), "メール返信"); err != nil {
+	if _, err := st.AddTask(context.Background(), "メール返信"); err != nil {
 		t.Fatalf("AddTask #2: %v", err)
 	}
-	third, err := st.AddTask(t.Context(), "資料確認")
+	third, err := st.AddTask(context.Background(), "資料確認")
 	if err != nil {
 		t.Fatalf("AddTask #3: %v", err)
 	}
 
-	focused, err := st.FocusTask(t.Context(), 3)
+	focused, err := st.FocusTask(context.Background(), 3)
 	if err != nil {
 		t.Fatalf("FocusTask: %v", err)
 	}
@@ -182,7 +183,7 @@ func TestFocusTaskMovesToTop(t *testing.T) {
 		t.Fatalf("focused task mismatch: got %d want %d", focused.ID, third.ID)
 	}
 
-	pending, _, err := st.ListTasks(t.Context())
+	pending, _, err := st.ListTasks(context.Background())
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
@@ -201,11 +202,11 @@ func TestFocusTaskMovesToTop(t *testing.T) {
 func TestFocusTaskTriggersNormalizeWhenOrderFloorExceeded(t *testing.T) {
 	st := newStore(t)
 
-	first, err := st.AddTask(t.Context(), "朝会の準備")
+	first, err := st.AddTask(context.Background(), "朝会の準備")
 	if err != nil {
 		t.Fatalf("AddTask #1: %v", err)
 	}
-	second, err := st.AddTask(t.Context(), "レビュー")
+	second, err := st.AddTask(context.Background(), "レビュー")
 	if err != nil {
 		t.Fatalf("AddTask #2: %v", err)
 	}
@@ -216,7 +217,7 @@ func TestFocusTaskTriggersNormalizeWhenOrderFloorExceeded(t *testing.T) {
 		t.Fatalf("prepare extreme order: %v", err)
 	}
 
-	focused, err := st.FocusTask(t.Context(), 2)
+	focused, err := st.FocusTask(context.Background(), 2)
 	if err != nil {
 		t.Fatalf("FocusTask: %v", err)
 	}
@@ -224,7 +225,7 @@ func TestFocusTaskTriggersNormalizeWhenOrderFloorExceeded(t *testing.T) {
 		t.Fatalf("expected second task to be focused, got %d", focused.ID)
 	}
 
-	pending, _, err := st.ListTasks(t.Context())
+	pending, _, err := st.ListTasks(context.Background())
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
@@ -238,27 +239,27 @@ func TestFocusTaskTriggersNormalizeWhenOrderFloorExceeded(t *testing.T) {
 
 func TestFocusTaskInvalidID(t *testing.T) {
 	st := newStore(t)
-	if _, err := st.FocusTask(t.Context(), 1); err != storage.ErrNoPendingTasks {
+	if _, err := st.FocusTask(context.Background(), 1); err != storage.ErrNoPendingTasks {
 		t.Fatalf("expected ErrNoPendingTasks, got %v", err)
 	}
 
-	if _, err := st.AddTask(t.Context(), "朝会の準備"); err != nil {
+	if _, err := st.AddTask(context.Background(), "朝会の準備"); err != nil {
 		t.Fatalf("AddTask: %v", err)
 	}
-	if _, err := st.FocusTask(t.Context(), 2); err != storage.ErrInvalidDisplayID {
+	if _, err := st.FocusTask(context.Background(), 2); err != storage.ErrInvalidDisplayID {
 		t.Fatalf("expected ErrInvalidDisplayID, got %v", err)
 	}
 }
 
 func TestFocusTaskKeepsOrderWhenAlreadyTop(t *testing.T) {
 	st := newStore(t)
-	task, err := st.AddTask(t.Context(), "朝会")
+	task, err := st.AddTask(context.Background(), "朝会")
 	if err != nil {
 		t.Fatalf("AddTask: %v", err)
 	}
 	origOrder := task.OrderKey
 
-	focused, err := st.FocusTask(t.Context(), 1)
+	focused, err := st.FocusTask(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("FocusTask: %v", err)
 	}
@@ -269,20 +270,20 @@ func TestFocusTaskKeepsOrderWhenAlreadyTop(t *testing.T) {
 
 func TestMoveTaskReorders(t *testing.T) {
 	st := newStore(t)
-	first, err := st.AddTask(t.Context(), "朝会準備")
+	first, err := st.AddTask(context.Background(), "朝会準備")
 	if err != nil {
 		t.Fatalf("AddTask #1: %v", err)
 	}
-	second, err := st.AddTask(t.Context(), "メール")
+	second, err := st.AddTask(context.Background(), "メール")
 	if err != nil {
 		t.Fatalf("AddTask #2: %v", err)
 	}
-	third, err := st.AddTask(t.Context(), "資料確認")
+	third, err := st.AddTask(context.Background(), "資料確認")
 	if err != nil {
 		t.Fatalf("AddTask #3: %v", err)
 	}
 
-	moved, err := st.MoveTask(t.Context(), 3, 1)
+	moved, err := st.MoveTask(context.Background(), 3, 1)
 	if err != nil {
 		t.Fatalf("MoveTask: %v", err)
 	}
@@ -290,7 +291,7 @@ func TestMoveTaskReorders(t *testing.T) {
 		t.Fatalf("moved unexpected task: got %d want %d", moved.ID, third.ID)
 	}
 
-	pending, _, err := st.ListTasks(t.Context())
+	pending, _, err := st.ListTasks(context.Background())
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
@@ -302,10 +303,10 @@ func TestMoveTaskReorders(t *testing.T) {
 		}
 	}
 
-	if _, err := st.MoveTask(t.Context(), 1, 3); err != nil {
+	if _, err := st.MoveTask(context.Background(), 1, 3); err != nil {
 		t.Fatalf("MoveTask to tail: %v", err)
 	}
-	pending, _, err = st.ListTasks(t.Context())
+	pending, _, err = st.ListTasks(context.Background())
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
@@ -320,35 +321,35 @@ func TestMoveTaskReorders(t *testing.T) {
 
 func TestMoveTaskValidation(t *testing.T) {
 	st := newStore(t)
-	if _, err := st.MoveTask(t.Context(), 1, 1); err != storage.ErrNoPendingTasks {
+	if _, err := st.MoveTask(context.Background(), 1, 1); err != storage.ErrNoPendingTasks {
 		t.Fatalf("expected ErrNoPendingTasks, got %v", err)
 	}
 
-	if _, err := st.AddTask(t.Context(), "朝会"); err != nil {
+	if _, err := st.AddTask(context.Background(), "朝会"); err != nil {
 		t.Fatalf("AddTask: %v", err)
 	}
 
-	if _, err := st.MoveTask(t.Context(), 0, 1); err != storage.ErrInvalidDisplayID {
+	if _, err := st.MoveTask(context.Background(), 0, 1); err != storage.ErrInvalidDisplayID {
 		t.Fatalf("expected ErrInvalidDisplayID for id=0, got %v", err)
 	}
 
-	if _, err := st.MoveTask(t.Context(), 1, 0); err != storage.ErrInvalidPosition {
+	if _, err := st.MoveTask(context.Background(), 1, 0); err != storage.ErrInvalidPosition {
 		t.Fatalf("expected ErrInvalidPosition for pos=0, got %v", err)
 	}
 
-	if _, err := st.MoveTask(t.Context(), 2, 1); err != storage.ErrInvalidDisplayID {
+	if _, err := st.MoveTask(context.Background(), 2, 1); err != storage.ErrInvalidDisplayID {
 		t.Fatalf("expected ErrInvalidDisplayID for id out of range, got %v", err)
 	}
 }
 
 func TestEditTaskUpdatesText(t *testing.T) {
 	st := newStore(t)
-	if _, err := st.AddTask(t.Context(), "旧テキスト"); err != nil {
+	if _, err := st.AddTask(context.Background(), "旧テキスト"); err != nil {
 		t.Fatalf("AddTask: %v", err)
 	}
 
 	before := time.Now()
-	edited, err := st.EditTask(t.Context(), 1, "新しいテキスト")
+	edited, err := st.EditTask(context.Background(), 1, "新しいテキスト")
 	if err != nil {
 		t.Fatalf("EditTask: %v", err)
 	}
@@ -359,7 +360,7 @@ func TestEditTaskUpdatesText(t *testing.T) {
 		t.Fatalf("expected updated_at to be refreshed")
 	}
 
-	pending, _, err := st.ListTasks(t.Context())
+	pending, _, err := st.ListTasks(context.Background())
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
@@ -370,36 +371,36 @@ func TestEditTaskUpdatesText(t *testing.T) {
 
 func TestEditTaskValidation(t *testing.T) {
 	st := newStore(t)
-	if _, err := st.EditTask(t.Context(), 1, "更新"); err != storage.ErrNoPendingTasks {
+	if _, err := st.EditTask(context.Background(), 1, "更新"); err != storage.ErrNoPendingTasks {
 		t.Fatalf("expected ErrNoPendingTasks, got %v", err)
 	}
 
-	if _, err := st.AddTask(t.Context(), "テスト"); err != nil {
+	if _, err := st.AddTask(context.Background(), "テスト"); err != nil {
 		t.Fatalf("AddTask: %v", err)
 	}
 
-	if _, err := st.EditTask(t.Context(), 2, "更新"); err != storage.ErrInvalidDisplayID {
+	if _, err := st.EditTask(context.Background(), 2, "更新"); err != storage.ErrInvalidDisplayID {
 		t.Fatalf("expected ErrInvalidDisplayID, got %v", err)
 	}
 
-	if _, err := st.EditTask(t.Context(), 1, " "); err != storage.ErrEmptyText {
+	if _, err := st.EditTask(context.Background(), 1, " "); err != storage.ErrEmptyText {
 		t.Fatalf("expected ErrEmptyText, got %v", err)
 	}
 }
 
 func TestDeleteTaskRemovesPending(t *testing.T) {
 	st := newStore(t)
-	if _, err := st.AddTask(t.Context(), "A"); err != nil {
+	if _, err := st.AddTask(context.Background(), "A"); err != nil {
 		t.Fatalf("AddTask: %v", err)
 	}
-	if _, err := st.AddTask(t.Context(), "B"); err != nil {
+	if _, err := st.AddTask(context.Background(), "B"); err != nil {
 		t.Fatalf("AddTask: %v", err)
 	}
-	if _, err := st.AddTask(t.Context(), "C"); err != nil {
+	if _, err := st.AddTask(context.Background(), "C"); err != nil {
 		t.Fatalf("AddTask: %v", err)
 	}
 
-	deleted, err := st.DeleteTask(t.Context(), 2)
+	deleted, err := st.DeleteTask(context.Background(), 2)
 	if err != nil {
 		t.Fatalf("DeleteTask: %v", err)
 	}
@@ -407,7 +408,7 @@ func TestDeleteTaskRemovesPending(t *testing.T) {
 		t.Fatalf("expected to delete second task, got %s", deleted.Text)
 	}
 
-	pending, _, err := st.ListTasks(t.Context())
+	pending, _, err := st.ListTasks(context.Background())
 	if err != nil {
 		t.Fatalf("ListTasks: %v", err)
 	}
@@ -421,32 +422,32 @@ func TestDeleteTaskRemovesPending(t *testing.T) {
 
 func TestDeleteTaskValidation(t *testing.T) {
 	st := newStore(t)
-	if _, err := st.DeleteTask(t.Context(), 1); err != storage.ErrNoPendingTasks {
+	if _, err := st.DeleteTask(context.Background(), 1); err != storage.ErrNoPendingTasks {
 		t.Fatalf("expected ErrNoPendingTasks, got %v", err)
 	}
 
-	if _, err := st.AddTask(t.Context(), "タスク"); err != nil {
+	if _, err := st.AddTask(context.Background(), "タスク"); err != nil {
 		t.Fatalf("AddTask: %v", err)
 	}
 
-	if _, err := st.DeleteTask(t.Context(), 0); err != storage.ErrInvalidDisplayID {
+	if _, err := st.DeleteTask(context.Background(), 0); err != storage.ErrInvalidDisplayID {
 		t.Fatalf("expected ErrInvalidDisplayID for id=0, got %v", err)
 	}
-	if _, err := st.DeleteTask(t.Context(), 2); err != storage.ErrInvalidDisplayID {
+	if _, err := st.DeleteTask(context.Background(), 2); err != storage.ErrInvalidDisplayID {
 		t.Fatalf("expected ErrInvalidDisplayID for id out of range, got %v", err)
 	}
 }
 
 func TestHeadTaskReturnsFirstPending(t *testing.T) {
 	st := newStore(t)
-	if _, err := st.AddTask(t.Context(), "A"); err != nil {
+	if _, err := st.AddTask(context.Background(), "A"); err != nil {
 		t.Fatalf("AddTask #1: %v", err)
 	}
-	if _, err := st.AddTask(t.Context(), "B"); err != nil {
+	if _, err := st.AddTask(context.Background(), "B"); err != nil {
 		t.Fatalf("AddTask #2: %v", err)
 	}
 
-	first, err := st.HeadTask(t.Context())
+	first, err := st.HeadTask(context.Background())
 	if err != nil {
 		t.Fatalf("HeadTask: %v", err)
 	}
@@ -454,11 +455,11 @@ func TestHeadTaskReturnsFirstPending(t *testing.T) {
 		t.Fatalf("expected first task to be A, got %s", first.Text)
 	}
 
-	if _, err := st.CompleteNext(t.Context()); err != nil {
+	if _, err := st.CompleteNext(context.Background()); err != nil {
 		t.Fatalf("CompleteNext: %v", err)
 	}
 
-	second, err := st.HeadTask(t.Context())
+	second, err := st.HeadTask(context.Background())
 	if err != nil {
 		t.Fatalf("HeadTask after next: %v", err)
 	}
@@ -466,11 +467,11 @@ func TestHeadTaskReturnsFirstPending(t *testing.T) {
 		t.Fatalf("expected second task to be B, got %s", second.Text)
 	}
 
-	if _, err := st.CompleteNext(t.Context()); err != nil {
+	if _, err := st.CompleteNext(context.Background()); err != nil {
 		t.Fatalf("CompleteNext #2: %v", err)
 	}
 
-	if _, err := st.HeadTask(t.Context()); err != storage.ErrNoPendingTasks {
+	if _, err := st.HeadTask(context.Background()); err != storage.ErrNoPendingTasks {
 		t.Fatalf("expected ErrNoPendingTasks, got %v", err)
 	}
 }
