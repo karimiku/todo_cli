@@ -116,4 +116,3 @@ func groupTasksByDate(tasks []storage.Task) map[string][]storage.Task {
 
 	return grouped
 }
-

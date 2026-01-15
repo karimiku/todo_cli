@@ -22,12 +22,12 @@ import (
 // タスクの順序管理には浮動小数点数の order_key を使用し、
 // 挿入や移動の際に中間値を計算することで順序を柔軟に管理します。
 type Task struct {
-	ID        uint      `gorm:"primaryKey"`                                                      // タスクの一意識別子
-	Text      string    `gorm:"type:text;not null"`                                              // タスクの本文
-	IsDone    bool      `gorm:"not null;index:idx_tasks_undone_order,priority:1"`                // 完了フラグ（false=未完了、true=完了）
-	OrderKey  float64   `gorm:"not null;index:idx_tasks_undone_order,priority:2"`                // 順序を決定するキー（小さいほど優先度が高い）
-	CreatedAt time.Time `gorm:"not null;autoCreateTime"`                                         // 作成日時
-	UpdatedAt time.Time `gorm:"not null;autoUpdateTime"`                                        // 更新日時
+	ID        uint      `gorm:"primaryKey"`                                       // タスクの一意識別子
+	Text      string    `gorm:"type:text;not null"`                               // タスクの本文
+	IsDone    bool      `gorm:"not null;index:idx_tasks_undone_order,priority:1"` // 完了フラグ（false=未完了、true=完了）
+	OrderKey  float64   `gorm:"not null;index:idx_tasks_undone_order,priority:2"` // 順序を決定するキー（小さいほど優先度が高い）
+	CreatedAt time.Time `gorm:"not null;autoCreateTime"`                          // 作成日時
+	UpdatedAt time.Time `gorm:"not null;autoUpdateTime"`                          // 更新日時
 }
 
 // Store はコマンド間で共有されるデータベース接続を管理します。
@@ -40,7 +40,7 @@ type Store struct {
 var ErrEmptyText = errors.New("空のテキストは不可")
 
 // ErrNoPendingTasks は未完了タスクが必要な操作で未完了タスクが存在しない場合に返されるエラーです。
-var ErrNoPendingTasks = errors.New("Todo 完了 🎉")
+var ErrNoPendingTasks = errors.New("未完了はありません 🎉")
 
 // ErrInvalidDisplayID は指定された表示番号が範囲外の場合に返されるエラーです。
 var ErrInvalidDisplayID = errors.New("指定した番号のタスクは見つかりません")
@@ -574,10 +574,10 @@ func applyPragmas(db *gorm.DB) error {
 
 	// SQLiteの設定を適用
 	pragmas := []string{
-		"PRAGMA journal_mode = WAL;",    // Write-Ahead Logging（パフォーマンス向上）
-		"PRAGMA synchronous = NORMAL;",   // 同期モード（バランスの取れた設定）
-		"PRAGMA foreign_keys = ON;",      // 外部キー制約を有効化
-		"PRAGMA busy_timeout = 4000;",    // ロック待機タイムアウト（4秒）
+		"PRAGMA journal_mode = WAL;",   // Write-Ahead Logging（パフォーマンス向上）
+		"PRAGMA synchronous = NORMAL;", // 同期モード（バランスの取れた設定）
+		"PRAGMA foreign_keys = ON;",    // 外部キー制約を有効化
+		"PRAGMA busy_timeout = 4000;",  // ロック待機タイムアウト（4秒）
 	}
 
 	for _, pragma := range pragmas {
