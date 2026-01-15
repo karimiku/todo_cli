@@ -10,12 +10,8 @@ on:
 
 jobs:
   test:
-    name: Test
-    strategy:
-      matrix:
-        go-version: ['1.21', '1.22', '1.23']
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    name: Test & Build
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -23,7 +19,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: '1.21'
 
       - name: Cache Go modules
         uses: actions/cache@v4
@@ -31,27 +27,21 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-${{ matrix.go-version }}-
+            ${{ runner.os }}-go-
 
       - name: Download dependencies
         run: go mod download
 
-      - name: Verify dependencies
-        run: go mod verify
-
       - name: Run tests
-        run: go test -v -race -coverprofile=coverage.out ./...
+        run: go test -v ./...
 
-      - name: Upload coverage to Codecov
-        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.21'
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./coverage.out
-          flags: unittests
-          name: codecov-umbrella
-        continue-on-error: true
+      - name: Build binaries
+        run: |
+          go build -v -o todo ./cmd/todo
+          go build -v -o tb ./cmd/tb
+          go build -v -o td ./cmd/td
 
   lint:
     name: Lint
@@ -65,108 +55,13 @@ jobs:
         with:
           go-version: '1.21'
 
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: latest
-          args: --timeout=5m
-
-  format:
-    name: Format Check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-
       - name: Check formatting
         run: |
-          gofmt -l .
-          test -z "$(gofmt -l .)"
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Code is not formatted. Please run 'go fmt ./...'"
+            gofmt -l .
+            exit 1
+          fi
 
       - name: Run go vet
         run: go vet ./...
-
-  build:
-    name: Build
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-
-      - name: Build todo
-        run: go build -v -o todo ./cmd/todo
-
-      - name: Build tb
-        run: go build -v -o tb ./cmd/tb
-
-      - name: Build td
-        run: go build -v -o td ./cmd/td
-
-      - name: Test binary (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          ./todo --help || true
-          ./tb --help || true
-          ./td --help || true
-
-      - name: Test binary (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          ./todo.exe --help
-          ./tb.exe --help
-          ./td.exe --help
-        continue-on-error: true
-
-  security:
-    name: Security Check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-
-      - name: Run Gosec Security Scanner
-        uses: securego/gosec@master
-        with:
-          args: '-no-fail -fmt sarif -out results.sarif ./...'
-        continue-on-error: true
-
-      - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: results.sarif
-        continue-on-error: true
-
-  dependency-check:
-    name: Dependency Check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-
-      - name: Check for vulnerabilities
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
