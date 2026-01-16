@@ -21,11 +21,11 @@ type model struct {
 
 	// 表示状態
 	currentMode mode
-	cursor      int    // 選択中の項目のインデックス
-	width       int    // ターミナルの幅
-	height      int    // ターミナルの高さ
-	err         error  // エラー情報
-	quitting    bool   // 終了フラグ
+	cursor      int   // 選択中の項目のインデックス
+	width       int   // ターミナルの幅
+	height      int   // ターミナルの高さ
+	err         error // エラー情報
+	quitting    bool  // 終了フラグ
 }
 
 // Init は初期化処理を実行します
@@ -106,9 +106,9 @@ func (m model) renderList() string {
 			cursor := " "
 			if m.cursor == i {
 				cursor = ">"
-				s += SelectedStyle.Render(cursor + " " + task.Text[:min(len(task.Text), 60)]) + "\n"
+				s += SelectedStyle.Render(cursor+" "+task.Text[:min(len(task.Text), 60)]) + "\n"
 			} else {
-				s += NormalStyle.Render(cursor + " " + task.Text[:min(len(task.Text), 60)]) + "\n"
+				s += NormalStyle.Render(cursor+" "+task.Text[:min(len(task.Text), 60)]) + "\n"
 			}
 		}
 	}
