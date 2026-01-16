@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 
@@ -11,6 +12,16 @@ import (
 
 // ListCommand は未完了タスクと完了済みタスクを表示するコマンドです。
 type ListCommand struct{}
+
+// JSONOutput はJSON形式で出力するためのデータ構造です。
+type JSONOutput struct {
+	Pending   []storage.Task `json:"pending"`
+	Completed []storage.Task `json:"completed"`
+	Count     struct {
+		Pending   int `json:"pending"`
+		Completed int `json:"completed"`
+	} `json:"count"`
+}
 
 // NewListCommand は list コマンドのインスタンスを生成します。
 func NewListCommand() cli.Command {
@@ -29,15 +40,52 @@ func (c *ListCommand) Description() string {
 	return "未完了タスクを順番に表示します"
 }
 
+// parseListFlags は list コマンドのフラグをパースします。
+func parseListFlags(args []string) (jsonMode bool, remaining []string) {
+	for _, arg := range args {
+		if arg == "--json" {
+			jsonMode = true
+		} else {
+			remaining = append(remaining, arg)
+		}
+	}
+	return jsonMode, remaining
+}
+
+// outputJSON はタスクリストをJSON形式で出力します。
+func outputJSON(ctx *cli.CommandContext, pending, completed []storage.Task) error {
+	output := JSONOutput{
+		Pending:   pending,
+		Completed: completed,
+	}
+	output.Count.Pending = len(pending)
+	output.Count.Completed = len(completed)
+
+	encoder := json.NewEncoder(ctx.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(output); err != nil {
+		return fmt.Errorf("JSON出力に失敗しました: %w", err)
+	}
+	return nil
+}
+
 // Run は未完了タスクと完了済みタスクを表示します。
 func (c *ListCommand) Run(ctx *cli.CommandContext, args []string) error {
-	if len(args) > 0 {
+	// フラグをパース
+	jsonMode, remaining := parseListFlags(args)
+
+	if len(remaining) > 0 {
 		return fmt.Errorf("追加の引数は不要です")
 	}
 
 	pending, completed, err := ctx.Store.ListTasks(ctx)
 	if err != nil {
 		return fmt.Errorf("タスク一覧の取得に失敗しました: %w", err)
+	}
+
+	// JSON出力モード
+	if jsonMode {
+		return outputJSON(ctx, pending, completed)
 	}
 
 	// タスクが1件もない場合
