@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/kamiriku/todo_cli/internal/cli"
+	"github.com/kamiriku/todo_cli/internal/render"
 	"github.com/kamiriku/todo_cli/internal/storage"
 )
 
@@ -50,7 +51,8 @@ func (c *ListCommand) Run(ctx *cli.CommandContext, args []string) error {
 		fmt.Fprintln(ctx.Stdout, storage.ErrNoPendingTasks.Error())
 	} else {
 		for idx, task := range pending {
-			fmt.Fprintf(ctx.Stdout, "%d %s\n", idx+1, task.Text)
+			summary := render.ExtractSummary(task.Text, 60)
+			fmt.Fprintf(ctx.Stdout, "%d %s\n", idx+1, summary)
 		}
 	}
 
@@ -75,7 +77,8 @@ func (c *ListCommand) Run(ctx *cli.CommandContext, args []string) error {
 			tasksForDate := grouped[date]
 			fmt.Fprintf(ctx.Stdout, "%s (%d件)\n", date, len(tasksForDate))
 			for _, task := range tasksForDate {
-				fmt.Fprintf(ctx.Stdout, "  [✅] %s\n", task.Text)
+				summary := render.ExtractSummary(task.Text, 60)
+				fmt.Fprintf(ctx.Stdout, "  [✅] %s\n", summary)
 			}
 			fmt.Fprintln(ctx.Stdout)
 		}
