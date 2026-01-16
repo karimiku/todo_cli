@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/kamiriku/todo_cli/internal/cli"
@@ -45,17 +47,55 @@ func parseAddFlags(args []string) (flags AddFlags, remaining []string) {
 	return flags, remaining
 }
 
+// readFromStdin は標準入力からテキストを読み取ります。
+func readFromStdin() (string, error) {
+	// 標準入力がパイプかどうかを確認
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		return "", fmt.Errorf("標準入力の状態確認に失敗しました: %w", err)
+	}
+
+	// パイプでない場合は空文字列を返す
+	if (stat.Mode() & os.ModeCharDevice) != 0 {
+		return "", nil
+	}
+
+	// 標準入力から複数行を読み取る
+	scanner := bufio.NewScanner(os.Stdin)
+	var lines []string
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("標準入力の読み取りに失敗しました: %w", err)
+	}
+
+	// 改行を保持して結合
+	return strings.Join(lines, "\n"), nil
+}
+
 // Run は新しいタスクを未完了リストの末尾に追加します。
 func (c *AddCommand) Run(ctx *cli.CommandContext, args []string) error {
 	// フラグをパース
 	flags, remaining := parseAddFlags(args)
 
-	if len(remaining) == 0 {
-		return fmt.Errorf("usage: %s add <text>", ctx.BinaryName)
+	var text string
+	if len(remaining) > 0 {
+		// 引数がある場合: 複数の引数は空白で結合して1つのテキストとして扱う
+		text = strings.Join(remaining, " ")
+	} else {
+		// 引数がない場合: 標準入力から読み取る
+		stdinText, err := readFromStdin()
+		if err != nil {
+			return err
+		}
+		if stdinText == "" {
+			return fmt.Errorf("usage: %s add <text>", ctx.BinaryName)
+		}
+		text = stdinText
 	}
 
-	// 複数の引数は空白で結合して1つのテキストとして扱う
-	text := strings.Join(remaining, " ")
 	task, err := ctx.Store.AddTask(ctx, text)
 	if err != nil {
 		if err == storage.ErrEmptyText {
