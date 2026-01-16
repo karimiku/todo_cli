@@ -27,7 +27,7 @@ func (c *CleanCommand) Aliases() []string {
 }
 
 func (c *CleanCommand) Description() string {
-	return "完了済みタスクを日付ごとに表示・削除します"
+	return "完了済みタスクを日付ごとに表示・削除します（clean all で全削除）"
 }
 
 // Run は完了済みタスクを日付ごとに表示し、日付が指定された場合は削除します。
@@ -53,16 +53,35 @@ func (c *CleanCommand) Run(ctx *cli.CommandContext, args []string) error {
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(dates)))
 
-	// 日付が指定されている場合は削除を実行
+	// 引数が指定されている場合は削除を実行
 	if len(args) > 0 {
 		if len(args) != 1 {
-			return fmt.Errorf("usage: %s clean [YYYY/MM/DD]", ctx.BinaryName)
+			return fmt.Errorf("usage: %s clean [YYYY/MM/DD|all]", ctx.BinaryName)
 		}
 
-		date := args[0]
+		arg := args[0]
+		
+		// "all"が指定された場合はすべての完了タスクを削除
+		if arg == "all" {
+			// 削除を実行
+			count, err := ctx.Store.DeleteAllCompletedTasks(ctx)
+			if err != nil {
+				return fmt.Errorf("タスクの削除に失敗しました: %w", err)
+			}
+
+			if count == 0 {
+				fmt.Fprintln(ctx.Stdout, "完了済みタスクはありません")
+				return nil
+			}
+
+			fmt.Fprintf(ctx.Stdout, "🗑 すべての完了済みタスク %d 件を削除しました\n", count)
+			return nil
+		}
+
 		// 日付フォーマットの検証
+		date := arg
 		if _, err := time.Parse("2006/01/02", date); err != nil {
-			return fmt.Errorf("日付は YYYY/MM/DD 形式で指定してください（例: 2025/01/15）")
+			return fmt.Errorf("日付は YYYY/MM/DD 形式で指定してください（例: 2025/01/15）、または 'all' を指定してください")
 		}
 
 		// 指定された日付のタスクが存在するか確認
@@ -90,7 +109,7 @@ func (c *CleanCommand) Run(ctx *cli.CommandContext, args []string) error {
 			fmt.Fprintf(ctx.Stdout, "  [✅] %s\n", task.Text)
 		}
 	}
-	fmt.Fprintln(ctx.Stdout, "\n削除する場合は: clean YYYY/MM/DD")
+	fmt.Fprintln(ctx.Stdout, "\n削除する場合は: clean YYYY/MM/DD または clean all")
 
 	return nil
 }
