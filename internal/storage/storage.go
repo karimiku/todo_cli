@@ -522,6 +522,26 @@ func (s *Store) DeleteCompletedTasksByDate(ctx context.Context, date string) (in
 	return int(deletedCount), nil
 }
 
+// DeleteAllCompletedTasks はすべての完了済みタスクを削除します。
+func (s *Store) DeleteAllCompletedTasks(ctx context.Context) (int, error) {
+	var deletedCount int64
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// すべての完了済みタスクを削除
+		result := tx.Where("is_done = ?", true).Delete(&Task{})
+		if result.Error != nil {
+			return fmt.Errorf("delete all completed tasks: %w", result.Error)
+		}
+		deletedCount = result.RowsAffected
+		return nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	return int(deletedCount), nil
+}
+
 // CompleteNext は未完了タスクの先頭（最小の order_key）を完了状態にします。
 func (s *Store) CompleteNext(ctx context.Context) (*Task, error) {
 	db := s.db.WithContext(ctx)
