@@ -15,7 +15,8 @@ type AddCommand struct{}
 
 // AddFlags は add コマンドのフラグを管理します。
 type AddFlags struct {
-	Quiet bool
+	Quiet  bool
+	Urgent bool
 }
 
 // NewAddCommand は add コマンドのインスタンスを生成します。
@@ -40,6 +41,8 @@ func parseAddFlags(args []string) (flags AddFlags, remaining []string) {
 	for _, arg := range args {
 		if arg == "--quiet" || arg == "-q" {
 			flags.Quiet = true
+		} else if arg == "--urgent" {
+			flags.Urgent = true
 		} else {
 			remaining = append(remaining, arg)
 		}
@@ -104,9 +107,38 @@ func (c *AddCommand) Run(ctx *cli.CommandContext, args []string) error {
 		return fmt.Errorf("タスク追加に失敗しました: %w", err)
 	}
 
+	// 緊急モードの場合は先頭に移動
+	if flags.Urgent {
+		// タスクIDを取得して先頭に移動
+		pending, _, err := ctx.Store.ListTasks(ctx)
+		if err != nil {
+			return fmt.Errorf("タスク一覧の取得に失敗しました: %w", err)
+		}
+
+		// 追加したタスクを見つける
+		taskIndex := -1
+		for i, t := range pending {
+			if t.ID == task.ID {
+				taskIndex = i + 1 // 1-based index
+				break
+			}
+		}
+
+		if taskIndex > 0 {
+			// 先頭に移動（move コマンドと同じロジック）
+			if _, err := ctx.Store.MoveTask(ctx, taskIndex, 1); err != nil {
+				return fmt.Errorf("緊急タスクの移動に失敗しました: %w", err)
+			}
+		}
+	}
+
 	// quietモードでは出力を抑制
 	if !flags.Quiet {
-		fmt.Fprintf(ctx.Stdout, "追加: %s\n", task.Text)
+		prefix := "追加"
+		if flags.Urgent {
+			prefix = "緊急追加"
+		}
+		fmt.Fprintf(ctx.Stdout, "%s: %s\n", prefix, task.Text)
 	}
 	return nil
 }
