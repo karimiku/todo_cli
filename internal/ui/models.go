@@ -117,11 +117,11 @@ func (m model) renderList() string {
 		for i, task := range m.pending {
 			// 要約を抽出
 			summary := render.ExtractSummary(task.Text, summaryWidth)
-			
+
 			// 番号とカーソル
 			number := fmt.Sprintf("%d", i+1)
 			cursor := " "
-			
+
 			if m.cursor == i {
 				cursor = "▶"
 				line := fmt.Sprintf("%s %s %s", cursor, number, summary)
