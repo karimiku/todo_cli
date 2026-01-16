@@ -82,6 +82,46 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKeyPress はキー入力を処理します
 func (m model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// 詳細表示モード時の特別なキーバインド
+	if m.currentMode == modeDetail {
+		switch msg.String() {
+		case "ctrl+c":
+			m.quitting = true
+			return m, tea.Quit
+		case "q", "esc":
+			// リスト選択モードに戻る
+			m.currentMode = modeList
+			m.updatePreview()
+			return m, nil
+		case "g":
+			// 先頭へジャンプ
+			m.viewport.GotoTop()
+			return m, nil
+		case "G":
+			// 末尾へジャンプ
+			m.viewport.GotoBottom()
+			return m, nil
+		case "j", "down":
+			// 下にスクロール
+			m.viewport.LineDown(1)
+			return m, nil
+		case "k", "up":
+			// 上にスクロール
+			m.viewport.LineUp(1)
+			return m, nil
+		case "d":
+			// 半ページ下にスクロール
+			m.viewport.HalfViewDown()
+			return m, nil
+		case "u":
+			// 半ページ上にスクロール
+			m.viewport.HalfViewUp()
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// リスト選択モード時のキーバインド
 	switch msg.String() {
 	case "ctrl+c", "q":
 		m.quitting = true
@@ -98,17 +138,9 @@ func (m model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.updatePreview() // プレビューを更新
 		}
 	case "enter":
-		// 詳細表示への切り替え（後で実装）
-		if m.currentMode == modeList {
-			m.currentMode = modeDetail
-		} else {
-			m.currentMode = modeList
-		}
-	case "esc":
-		// リスト表示に戻る
-		if m.currentMode == modeDetail {
-			m.currentMode = modeList
-		}
+		// 詳細表示への切り替え
+		m.currentMode = modeDetail
+		m.updateDetailView()
 	}
 	return m, nil
 }
@@ -149,6 +181,36 @@ func (m *model) updatePreview() {
 	}
 
 	m.viewport.SetContent(rendered)
+}
+
+// updateDetailView は詳細表示モードのビューを更新します
+func (m *model) updateDetailView() {
+	if !m.ready || len(m.pending) == 0 || m.cursor >= len(m.pending) {
+		m.viewport.SetContent("タスクが見つかりません")
+		return
+	}
+
+	task := m.pending[m.cursor]
+
+	// 詳細表示用のviewportサイズを調整（全画面に近い）
+	detailHeight := m.height - 6 // ヘッダーとヘルプを考慮
+	if detailHeight < 10 {
+		detailHeight = 10
+	}
+	m.viewport.Width = m.width - 4
+	m.viewport.Height = detailHeight
+
+	// Markdownをレンダリング（全画面用）
+	rendered, err := render.RenderMarkdown(task.Text, m.width-4)
+	if err != nil {
+		// エラー時は生テキストを表示
+		m.viewport.SetContent(task.Text)
+	} else {
+		m.viewport.SetContent(rendered)
+	}
+
+	// 先頭にジャンプ
+	m.viewport.GotoTop()
 }
 
 // renderList はリスト表示を描画します（プレビュー付き2ペイン表示）
@@ -237,17 +299,33 @@ func (m model) renderList() string {
 	return s.String()
 }
 
-// renderDetail は詳細表示を描画します（骨組み）
+// renderDetail は詳細表示を描画します（全画面表示）
 func (m model) renderDetail() string {
 	if m.cursor >= len(m.pending) {
 		return "タスクが見つかりません\n"
 	}
 
-	task := m.pending[m.cursor]
+	var s strings.Builder
 
-	s := HeaderStyle.Render("📄 Task Detail") + "\n\n"
-	s += DetailStyle.Render(task.Text) + "\n\n"
-	s += HelpStyle.Render("Esc/Enter: 戻る | q: 終了") + "\n"
+	// ヘッダー（タスク番号と情報）
+	taskNum := fmt.Sprintf("Task #%d/%d", m.cursor+1, len(m.pending))
+	s.WriteString(DetailHeaderStyle.Render(taskNum) + "\n\n")
 
-	return s
+	// viewport で全画面表示
+	if m.ready {
+		s.WriteString(m.viewport.View() + "\n")
+	}
+
+	// 区切り線
+	dividerWidth := m.width - 2
+	if dividerWidth < 10 {
+		dividerWidth = 10
+	}
+	divider := strings.Repeat("─", dividerWidth)
+	s.WriteString("\n" + DividerStyle.Render(divider) + "\n")
+
+	// ヘルプ
+	s.WriteString(HelpStyle.Render("j/k: スクロール | g/G: 先頭/末尾 | d/u: 半ページ | q/Esc: 戻る") + "\n")
+
+	return s.String()
 }

@@ -42,4 +42,11 @@ var (
 				Foreground(lipgloss.Color("15")).
 				Background(lipgloss.Color("99")).
 				Padding(0, 1)
+
+	// DetailHeaderStyle は詳細表示ヘッダー用のスタイル
+	DetailHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("15")).
+				Background(lipgloss.Color("33")).
+				Padding(0, 1)
 )
