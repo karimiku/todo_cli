@@ -60,7 +60,7 @@ func (c *CleanCommand) Run(ctx *cli.CommandContext, args []string) error {
 		}
 
 		arg := args[0]
-		
+
 		// "all"が指定された場合はすべての完了タスクを削除
 		if arg == "all" {
 			// 削除を実行
