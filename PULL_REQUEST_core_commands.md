@@ -94,3 +94,5 @@ go build -o todo ./cmd/todo
 - `feature/extended-commands`: focus/move/edit/delete コマンドの実装
 
 
+
+
