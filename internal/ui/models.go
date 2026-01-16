@@ -1,7 +1,10 @@
 package ui
 
 import (
+	"fmt"
+
 	"github.com/charmbracelet/bubbletea"
+	"github.com/kamiriku/todo_cli/internal/render"
 	"github.com/kamiriku/todo_cli/internal/storage"
 )
 
@@ -95,25 +98,52 @@ func (m model) View() string {
 	}
 }
 
-// renderList はリスト表示を描画します（骨組み）
+// renderList はリスト表示を描画します
 func (m model) renderList() string {
 	s := HeaderStyle.Render("📝 Todo List") + "\n\n"
 
 	if len(m.pending) == 0 {
 		s += "タスクはありません\n"
 	} else {
+		// ターミナル幅に応じて要約の長さを調整
+		summaryWidth := m.width - 10 // 番号と余白を考慮
+		if summaryWidth < 40 {
+			summaryWidth = 40
+		}
+		if summaryWidth > 80 {
+			summaryWidth = 80
+		}
+
 		for i, task := range m.pending {
+			// 要約を抽出
+			summary := render.ExtractSummary(task.Text, summaryWidth)
+			
+			// 番号とカーソル
+			number := fmt.Sprintf("%d", i+1)
 			cursor := " "
+			
 			if m.cursor == i {
-				cursor = ">"
-				s += SelectedStyle.Render(cursor+" "+task.Text[:min(len(task.Text), 60)]) + "\n"
+				cursor = "▶"
+				line := fmt.Sprintf("%s %s %s", cursor, number, summary)
+				s += SelectedStyle.Render(line) + "\n"
 			} else {
-				s += NormalStyle.Render(cursor+" "+task.Text[:min(len(task.Text), 60)]) + "\n"
+				line := fmt.Sprintf("%s %s %s", cursor, number, summary)
+				s += NormalStyle.Render(line) + "\n"
 			}
 		}
 	}
 
-	s += "\n" + DividerStyle.Render("────────────────────────────────────────") + "\n"
+	// 区切り線（ターミナル幅に合わせる）
+	dividerWidth := m.width - 2
+	if dividerWidth < 10 {
+		dividerWidth = 10
+	}
+	divider := ""
+	for i := 0; i < dividerWidth; i++ {
+		divider += "─"
+	}
+
+	s += "\n" + DividerStyle.Render(divider) + "\n"
 	s += HelpStyle.Render("j/k: 移動 | Enter: 詳細 | q: 終了") + "\n"
 
 	return s
@@ -132,12 +162,4 @@ func (m model) renderDetail() string {
 	s += HelpStyle.Render("Esc/Enter: 戻る | q: 終了") + "\n"
 
 	return s
-}
-
-// min は2つの整数のうち小さい方を返します
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
