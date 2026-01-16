@@ -8,6 +8,7 @@ import (
 	"github.com/kamiriku/todo_cli/internal/cli"
 	"github.com/kamiriku/todo_cli/internal/render"
 	"github.com/kamiriku/todo_cli/internal/storage"
+	"github.com/kamiriku/todo_cli/internal/ui"
 )
 
 // ListCommand は未完了タスクと完了済みタスクを表示するコマンドです。
@@ -40,16 +41,24 @@ func (c *ListCommand) Description() string {
 	return "未完了タスクを順番に表示します"
 }
 
+// ListFlags は list コマンドのフラグを管理します。
+type ListFlags struct {
+	JSON   bool
+	Detail bool
+}
+
 // parseListFlags は list コマンドのフラグをパースします。
-func parseListFlags(args []string) (jsonMode bool, remaining []string) {
+func parseListFlags(args []string) (flags ListFlags, remaining []string) {
 	for _, arg := range args {
 		if arg == "--json" {
-			jsonMode = true
+			flags.JSON = true
+		} else if arg == "--detail" || arg == "-d" {
+			flags.Detail = true
 		} else {
 			remaining = append(remaining, arg)
 		}
 	}
-	return jsonMode, remaining
+	return flags, remaining
 }
 
 // outputJSON はタスクリストをJSON形式で出力します。
@@ -72,10 +81,15 @@ func outputJSON(ctx *cli.CommandContext, pending, completed []storage.Task) erro
 // Run は未完了タスクと完了済みタスクを表示します。
 func (c *ListCommand) Run(ctx *cli.CommandContext, args []string) error {
 	// フラグをパース
-	jsonMode, remaining := parseListFlags(args)
+	flags, remaining := parseListFlags(args)
 
 	if len(remaining) > 0 {
 		return fmt.Errorf("追加の引数は不要です")
+	}
+
+	// 詳細モード（インタラクティブ）
+	if flags.Detail {
+		return ui.ShowInteractive(ctx)
 	}
 
 	pending, completed, err := ctx.Store.ListTasks(ctx)
@@ -84,7 +98,7 @@ func (c *ListCommand) Run(ctx *cli.CommandContext, args []string) error {
 	}
 
 	// JSON出力モード
-	if jsonMode {
+	if flags.JSON {
 		return outputJSON(ctx, pending, completed)
 	}
 
