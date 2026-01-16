@@ -35,4 +35,11 @@ var (
 			Padding(1, 2).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("62"))
+
+	// PreviewHeaderStyle はプレビューヘッダー用のスタイル
+	PreviewHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("15")).
+				Background(lipgloss.Color("99")).
+				Padding(0, 1)
 )
