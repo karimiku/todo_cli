@@ -33,7 +33,7 @@ func (c *AddCommand) Aliases() []string {
 }
 
 func (c *AddCommand) Description() string {
-	return "未完了タスクを末尾へ追加します"
+	return "未完了タスクを末尾へ追加します（-q: 静か, --urgent: 先頭に追加）"
 }
 
 // parseAddFlags は add コマンドのフラグをパースします。

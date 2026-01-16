@@ -38,7 +38,7 @@ func (c *ListCommand) Aliases() []string {
 }
 
 func (c *ListCommand) Description() string {
-	return "未完了タスクを順番に表示します"
+	return "未完了タスクを順番に表示します（-d: インタラクティブ, --json: JSON出力）"
 }
 
 // ListFlags は list コマンドのフラグを管理します。
