@@ -15,10 +15,28 @@
 ## インストール
 
 ### 必要な環境
-- Go 1.22 以上
+- Go 1.24 以上（手動ビルド時のみ）
 - ANSI カラー対応ターミナル（インタラクティブモード用）
 
-### 方法1: Makefileを使用（推奨）
+### 方法1: Nix（最も手軽）
+
+[Nix](https://nixos.org/download.html) が入っていれば、ビルド済みバイナリがその場で手に入ります。
+
+```bash
+# 1回だけ実行（ビルドはせずキャッシュから）
+nix run github:karimiku/todo_cli
+
+# 個別バイナリも実行可能
+nix run github:karimiku/todo_cli#tb
+nix run github:karimiku/todo_cli#td
+
+# ユーザープロファイルに常駐インストール
+nix profile install github:karimiku/todo_cli
+```
+
+Go ツールチェーンを別途用意する必要はありません。Linux / macOS の amd64 / arm64 で動作します。
+
+### 方法2: Makefileを使用
 
 ```bash
 # ビルド
@@ -34,7 +52,7 @@ cp todo tb td ~/bin/
 # export PATH="$HOME/bin:$PATH"
 ```
 
-### 方法2: 手動ビルド
+### 方法3: 手動ビルド
 
 ```bash
 # ビルド
@@ -289,4 +307,4 @@ todo list
 
 ## ライセンス
 
-現状は公開ライセンスを設定していません。個人利用を前提に運用しています。
+[MIT License](LICENSE) で公開しています。
