@@ -38,3 +38,7 @@ Thumbs.db
 # Build artifacts
 dist/
 build/
+
+# Nix
+/result
+/result-*
